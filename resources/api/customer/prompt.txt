@@ -1,0 +1,52 @@
+Read these files in this project: PROJECT_RULES.md,
+resources/api/common.yaml and
+resources/api/customer/customer-api.yaml.
+Do not change any file and do not write any code.
+
+customer-api.yaml is the contract of customer-service, which we build next.
+It uses the shared definitions in common.yaml.
+
+1. In simple words, explain what customer-service does, and list its
+   endpoints.
+2. For each request below, give the HTTP status and the exact JSON body the
+   service must answer, following the contracts:
+   a) GET /customers/C-1001
+      (in the database: C-1001, Elena Markovic,
+      elena.markovic@example.com, ACTIVE)
+   b) GET /customers/C-9999 (no customer has this ID)
+   c) GET /customers/1001
+3. FastAPI has its own default error answers. Tell me which ones the service
+   must replace, and why.
+
+
+=== 08d-1 · customer-api · Build customer-service ===
+
+Read these files in this project: PROJECT_RULES.md,
+contracts/api/common/common.yaml and
+contracts/api/customer-api/customer-api.yaml.
+
+Build customer-service exactly as customer-api.yaml describes, following
+PROJECT_RULES.md. This step covers only:
+- GET /health
+- GET /customers/{customer_id}, reading the customer from the database.
+  Do not add the Redis cache yet: "source" is always "database".
+
+1. Create the folder app/customer-service with a Dockerfile,
+   requirements.txt and main.py, as PROJECT_RULES.md sections 5 to 7
+   describe.
+2. Add customer-service to app/compose.yaml exactly as PROJECT_RULES.md
+   section 7 shows. Do not change the traefik service.
+3. customer_id must match the pattern in common.yaml. A wrongly written ID
+   gets 422 before the database is read.
+4. Every error answer uses the Error schema in common.yaml, never FastAPI's
+   {"detail": ...}:
+   - unknown customer, or unknown address: 404, NOT_FOUND
+   - wrongly written ID: 422, VALIDATION_FAILED, with "fields"
+   - wrong HTTP method: 405, METHOD_NOT_ALLOWED
+   - database not available: 503, DEPENDENCY_UNAVAILABLE
+   - any other error: 500, INTERNAL_ERROR
+5. Read only the schema "customer". Never create or change tables.
+
+When you are done, tell me the command that builds and starts the service,
+and the addresses to try in the browser. Then stop.
+ 

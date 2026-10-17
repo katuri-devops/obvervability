@@ -1,0 +1,163 @@
+openapi: 3.1.0
+
+info:
+
+  title: customer-api
+
+  version: 1.0.0
+
+  description: >
+
+    The API of customer-service. It looks up customers. customer-service owns
+
+    the database schema "customer", and keeps each customer in Redis for 60
+
+    seconds, so a repeated lookup does not touch the database. The Redis
+
+    cache is added in a later step; until then, "source" is always
+
+    "database". Like every service, it answers a wrong HTTP method with 405
+
+    and the code METHOD_NOT_ALLOWED (see common.yaml).
+
+
+
+servers:
+
+  - url: http://traefik:8000/customer-service
+
+    description: From another service, through Traefik
+
+  - url: http://localhost:8080/customer-service
+
+    description: From your browser
+
+
+
+paths:
+
+  /health:
+
+    get:
+
+      operationId: health
+
+      responses:
+
+        '200':
+
+          $ref: '../common/common.yaml#/components/responses/Health'
+
+
+
+  /customers/{customer_id}:
+
+    get:
+
+      operationId: getCustomer
+
+      description: >
+
+        Reads the customer from Redis under the key customer:{customer_id}.
+
+        If it is not there, reads it from the database, stores it in Redis
+
+        for 60 seconds, and returns it. If Redis is down, logs a warning and
+
+        reads the database. "source" says where the answer came from. If the
+
+        database is not available, answers 503 with the code
+
+        DEPENDENCY_UNAVAILABLE. Any other unexpected error answers 500 with
+
+        the code INTERNAL_ERROR.
+
+      parameters:
+
+        - name: customer_id
+
+          in: path
+
+          required: true
+
+          schema:
+
+            $ref: '../common/common.yaml#/components/schemas/CustomerId'
+
+      responses:
+
+        '200':
+
+          description: The customer.
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Customer'
+
+        '404':
+
+          $ref: '../common/common.yaml#/components/responses/NotFound'
+
+        '422':
+
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+
+        '500':
+
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+
+        '503':
+
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+
+
+components:
+
+  schemas:
+
+    Customer:
+
+      type: object
+
+      additionalProperties: false
+
+      required: [customer_id, full_name, email, status, source]
+
+      properties:
+
+        customer_id:
+
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+
+        full_name:
+
+          type: string
+
+          examples: [Elena Markovic]
+
+        email:
+
+          type: string
+
+          format: email
+
+          examples: [elena.markovic@example.com]
+
+        status:
+
+          type: string
+
+          enum: [ACTIVE, SUSPENDED]
+
+        source:
+
+          type: string
+
+          enum: [cache, database]
+
+ 

@@ -1,0 +1,137 @@
+openapi: 3.1.0
+info:
+  title: Shared definitions
+  version: 1.0.0
+  description: >
+    Definitions used by every service: the health response, the error body
+    and the ID formats. The service files refer to them.
+
+components:
+  schemas:
+    CustomerId:
+      type: string
+      pattern: '^C-[0-9]{4}$'
+      examples: [C-1001]
+
+    PolicyId:
+      type: string
+      pattern: '^P-[0-9]{4}$'
+      examples: [P-2001]
+
+    ClaimId:
+      type: string
+      pattern: '^CLM-[0-9]{6,}$'
+      examples: [CLM-100001]
+
+    PaymentId:
+      type: string
+      pattern: '^PAY-[0-9]{6,}$'
+      examples: [PAY-100001]
+
+    Money:
+      type: number
+      minimum: 0
+      description: >
+        An amount of money as a JSON number with at most two decimals, for
+        example 1250.5. Never a string.
+      examples: [1250.5]
+
+    Health:
+      type: object
+      additionalProperties: false
+      required: [service, instance, status]
+      properties:
+        service:
+          type: string
+          description: The service name, exactly as in PROJECT_RULES.md.
+          examples: [customer-service]
+        instance:
+          type: string
+          description: The container's host name. It tells the two copies of a service apart.
+          examples: [3f2a9c1d7b44]
+        status:
+          const: ok
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: >
+                Each code belongs to one HTTP status, shown after it.
+                METHOD_NOT_ALLOWED applies to every endpoint of every service:
+                the address exists, but not with this HTTP method.
+              enum:
+                - VALIDATION_FAILED       # 422
+                - NOT_FOUND               # 404
+                - METHOD_NOT_ALLOWED      # 405
+                - DUPLICATE_PAYMENT       # 409
+                - DEPENDENCY_UNAVAILABLE  # 503
+                - INTERNAL_ERROR          # 500
+            message:
+              type: string
+              description: One sentence for a person to read.
+            fields:
+              type: object
+              description: >
+                Only with VALIDATION_FAILED. Maps each invalid field to a
+                message that says what to do, for example
+                "Enter an amount greater than 0." A field that is not part of
+                the request is listed under its own name, with the message
+                "This field is not allowed."
+              additionalProperties:
+                type: string
+      examples:
+        - error:
+            code: VALIDATION_FAILED
+            message: Some fields are not valid.
+            fields:
+              amount_claimed: Enter an amount greater than 0.
+
+  responses:
+    Health:
+      description: The service is running. This never checks the database, Redis or RabbitMQ.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Health'
+    ValidationFailed:
+      description: The request has invalid or unknown fields.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The requested record does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    MethodNotAllowed:
+      description: The address exists, but not with this HTTP method.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    DependencyUnavailable:
+      description: >
+        Something this service depends on failed or did not answer in time:
+        another service, or the database.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalError:
+      description: An unexpected error in this service.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+ 
