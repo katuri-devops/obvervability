@@ -1,0 +1,32 @@
+# PostgreSQL: the database of the claims system.
+name: claims-postgres
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: claims
+      POSTGRES_PASSWORD: claims-dev-password
+      POSTGRES_DB: claims
+    ports:
+      # Reachable from your own computer only, on port 15432.
+      - "127.0.0.1:15432:5432"
+    volumes:
+      # Keeps the data when the container is removed.
+      - data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claims -d claims"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - claims-net
+
+volumes:
+  data:
+
+networks:
+  # Created once by hand and shared by all four setups.
+  claims-net:
+    external: true

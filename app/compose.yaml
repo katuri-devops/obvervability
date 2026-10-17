@@ -1,0 +1,40 @@
+# The app setup. First version: only the load balancer.
+# The services are added to this file in the next steps.
+name: claims-app
+
+services:
+  traefik:
+    image: traefik:v3.7
+    restart: unless-stopped
+    command:
+      # Find containers through Docker, but only the ones that ask for it with a label.
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=claims-net
+      # "web" is the door for browsers. "internal" is for calls between services.
+      - --entrypoints.web.address=:80
+      - --entrypoints.internal.address=:8000
+      # Dashboard without a password. Acceptable for a training system only.
+      - --api.insecure=true
+      - --ping=true
+      - --accesslog=true
+    ports:
+      # Reachable from your own computer only.
+      - "127.0.0.1:8080:80"      # the claims web pages
+      - "127.0.0.1:8088:8080"    # the Traefik dashboard
+    volumes:
+      # Lets Traefik ask Docker which containers are running.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - claims-net
+
+networks:
+  # Created once by hand and shared by all four setups.
+  claims-net:
+    external: true
+ 
