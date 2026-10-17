@@ -33,6 +33,37 @@ services:
     networks:
       - claims-net
 
+  customer-service:
+    build:
+      context: .
+      dockerfile: customer-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: customer-service
+      DATABASE_URL: postgresql+psycopg://claims:claims-dev-password@postgres:5432/claims?application_name=customer-service
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.customer-service.rule=PathPrefix(`/customer-service`)
+      - traefik.http.routers.customer-service.entrypoints=web,internal
+      - traefik.http.routers.customer-service.middlewares=customer-service-strip
+      - traefik.http.middlewares.customer-service-strip.stripprefix.prefixes=/customer-service
+      - traefik.http.services.customer-service.loadbalancer.server.port=8000
+      - traefik.http.services.customer-service.loadbalancer.healthcheck.path=/health
+      - traefik.http.services.customer-service.loadbalancer.healthcheck.interval=5s
+    networks:
+      - claims-net
+
 networks:
   # Created once by hand and shared by all four setups.
   claims-net:
