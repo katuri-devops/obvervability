@@ -1,0 +1,184 @@
+openapi: 3.1.0
+info:
+  title: policy-api
+  version: 1.0.0
+  description: >
+    The API of policy-service. It looks up insurance policies, and decides
+    whether a policy covers a claim and how much it pays. policy-service owns
+    the database schema "policy", and keeps each policy in Redis for 60
+    seconds. The Redis cache is added in a later step; until then, "source"
+    is always "database". Like every service, it answers a wrong HTTP method
+    with 405 and the code METHOD_NOT_ALLOWED (see common.yaml).
+
+servers:
+  - url: http://traefik:8000/policy-service
+    description: From another service, through Traefik
+  - url: http://localhost:8080/policy-service
+    description: From your browser
+
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          $ref: '../common/common.yaml#/components/responses/Health'
+
+  /policies/{policy_id}:
+    get:
+      operationId: getPolicy
+      description: >
+        Reads the policy from Redis under the key policy:{policy_id}. If it is
+        not there, reads it from the database, stores it in Redis for 60
+        seconds, and returns it. If Redis is down, logs a warning and reads
+        the database. "source" says where the answer came from. If the
+        database is not available, answers 503 with the code
+        DEPENDENCY_UNAVAILABLE. Any other unexpected error answers 500 with
+        the code INTERNAL_ERROR.
+      parameters:
+        - $ref: '#/components/parameters/PolicyId'
+      responses:
+        '200':
+          description: The policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '404':
+          $ref: '../common/common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+        '500':
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+        '503':
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+  /policies/{policy_id}/coverage-check:
+    post:
+      operationId: checkCoverage
+      description: |
+        Decides whether this policy covers a claim, and how much it pays.
+        Reads the policy the same way as GET /policies/{policy_id}. Nothing
+        is saved.
+
+        The checks run in this order, and the first one that applies decides:
+
+        1. The policy belongs to another customer: covered false, reason
+           POLICY_NOT_OWNED.
+        2. The policy status is not ACTIVE: covered false, reason
+           POLICY_NOT_ACTIVE.
+        3. incident_date is before start_date or after end_date: covered
+           false, reason INCIDENT_OUTSIDE_POLICY_PERIOD.
+        4. payable = min(amount_claimed, coverage_limit) - deductible, rounded
+           to two decimals. If payable is 0 or less: covered false, reason
+           BELOW_DEDUCTIBLE.
+        5. Otherwise: covered true, reason null, payable_amount = payable.
+
+        When covered is false, payable_amount is 0. A policy that does not
+        cover the claim is a normal answer, 200, not an error.
+
+        Errors: an unknown policy answers 404 NOT_FOUND. An invalid or
+        unknown field in the request answers 422 VALIDATION_FAILED, naming
+        the field. If the database is not available, 503
+        DEPENDENCY_UNAVAILABLE; any other unexpected error, 500
+        INTERNAL_ERROR.
+      parameters:
+        - $ref: '#/components/parameters/PolicyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoverageCheckRequest'
+      responses:
+        '200':
+          description: The decision. A policy that does not cover the claim is still a 200.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageCheckResult'
+        '404':
+          $ref: '../common/common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+        '500':
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+        '503':
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+components:
+  parameters:
+    PolicyId:
+      name: policy_id
+      in: path
+      required: true
+      schema:
+        $ref: '../common/common.yaml#/components/schemas/PolicyId'
+
+  schemas:
+    Policy:
+      type: object
+      additionalProperties: false
+      required: [policy_id, customer_id, policy_type, status, coverage_limit, deductible,
+                 start_date, end_date, source]
+      properties:
+        policy_id:
+          $ref: '../common/common.yaml#/components/schemas/PolicyId'
+        customer_id:
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+        policy_type:
+          type: string
+          enum: [MOTOR, HOME, HEALTH, TRAVEL]
+        status:
+          type: string
+          enum: [ACTIVE, LAPSED, CANCELLED]
+        coverage_limit:
+          $ref: '../common/common.yaml#/components/schemas/Money'
+        deductible:
+          $ref: '../common/common.yaml#/components/schemas/Money'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        source:
+          type: string
+          enum: [cache, database]
+
+    CoverageCheckRequest:
+      type: object
+      additionalProperties: false
+      required: [customer_id, incident_date, amount_claimed]
+      properties:
+        customer_id:
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+        incident_date:
+          type: string
+          format: date
+          description: The day the incident happened, for example 2026-10-17.
+        amount_claimed:
+          type: number
+          exclusiveMinimum: 0
+          description: The amount the customer asks for. More than 0, at most two decimals.
+
+    CoverageCheckResult:
+      type: object
+      additionalProperties: false
+      required: [policy_id, covered, reason, coverage_limit, deductible, payable_amount]
+      properties:
+        policy_id:
+          $ref: '../common/common.yaml#/components/schemas/PolicyId'
+        covered:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          enum: [POLICY_NOT_OWNED, POLICY_NOT_ACTIVE, INCIDENT_OUTSIDE_POLICY_PERIOD,
+                 BELOW_DEDUCTIBLE, null]
+        coverage_limit:
+          $ref: '../common/common.yaml#/components/schemas/Money'
+        deductible:
+          $ref: '../common/common.yaml#/components/schemas/Money'
+        payable_amount:
+          $ref: '../common/common.yaml#/components/schemas/Money'
+ 

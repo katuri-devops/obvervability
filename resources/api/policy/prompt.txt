@@ -1,0 +1,35 @@
+Read these files in this project: PROJECT_RULES.md,
+common.yaml and
+policy-api.yaml.
+
+Build policy-service exactly as policy-api.yaml describes, following
+PROJECT_RULES.md. This step covers only:
+- GET /health
+- GET /policies/{policy_id}, reading the policy from the database
+- POST /policies/{policy_id}/coverage-check
+Do not add the Redis cache yet: "source" is always "database".
+
+1. Create the folder app/policy-service with a Dockerfile,
+   requirements.txt and main.py, as PROJECT_RULES.md sections 5 to 7
+   describe.
+2. Add policy-service to app/compose.yaml in the form PROJECT_RULES.md
+   section 7 shows, with policy-service in place of customer-service
+   everywhere. Do not change the other services in that file.
+3. policy_id must match the pattern in common.yaml. A wrongly written ID
+   gets 422 before the database is read.
+4. The coverage check applies the five rules in the contract, in that
+   order. Calculate money with Decimal, and send it as JSON numbers.
+5. The request body of the coverage check accepts exactly its three
+   fields. Any other field gets 422, VALIDATION_FAILED, with the field's
+   name in "fields" and the message "This field is not allowed."
+6. Every error answer uses the Error schema in common.yaml, never FastAPI's
+   {"detail": ...}:
+   - unknown policy, or unknown address: 404, NOT_FOUND
+   - invalid ID or request field: 422, VALIDATION_FAILED, with "fields"
+   - wrong HTTP method: 405, METHOD_NOT_ALLOWED
+   - database not available: 503, DEPENDENCY_UNAVAILABLE
+   - any other error: 500, INTERNAL_ERROR
+7. Read only the schema "policy". Never create or change tables.
+
+When you are done, tell me the command that builds and starts the service,
+and how to try it. Then stop.
