@@ -1,0 +1,22 @@
+.DS_Store
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
