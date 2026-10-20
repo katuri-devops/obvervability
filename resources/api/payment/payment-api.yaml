@@ -1,0 +1,186 @@
+openapi: 3.1.0
+info:
+  title: payment-api
+  version: 1.1.0
+  description: >
+    The API of payment-service. It pays approved claims through the bank, and
+    records every payment it attempts. payment-service owns the database
+    schema "payment". It calls the bank as bank-api.yaml describes, at the
+    address in the environment variable BANK_URL. It takes a lock in Redis
+    for each payment, so that the same claim cannot be paid twice at the
+    same moment. The Redis lock is added in a later step; until then,
+    payment-service works without it. Like every service, it answers a wrong
+    HTTP method with 405 and the code METHOD_NOT_ALLOWED (see common.yaml).
+
+servers:
+  - url: http://traefik:8000/payment-service
+    description: From another service, through Traefik
+  - url: http://localhost:8080/payment-service
+    description: From your browser
+
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          $ref: '../common/common.yaml#/components/responses/Health'
+
+  /payments:
+    post:
+      operationId: createPayment
+      description: |
+        Pays one claim. claims-api calls it once a claim is approved.
+
+        The steps, in this order:
+
+        1. If the database already holds a payment for this claim_id, answer
+           409 DUPLICATE_PAYMENT, and do not call the bank. A claim gets one
+           payment, whether that payment completed or failed.
+        2. Call the bank: POST {BANK_URL}/transfers, with reference set to
+           claim_id, and with customer_id and amount. Wait at most 10 seconds
+           for the bank's answer.
+        3. Decide the result from the bank's answer:
+           - 201: status COMPLETED, bank_transfer_id set to the bank's
+             transfer_id, failure_reason null.
+           - No answer within 10 seconds: status FAILED, failure_reason
+             BANK_TIMEOUT, bank_transfer_id null.
+           - Any other HTTP status, or the bank cannot be reached: status
+             FAILED, failure_reason BANK_ERROR, bank_transfer_id null.
+        4. Save the payment in the table payment.payments. The database
+           creates payment_id and created_at. If the save fails because the
+           database already holds a payment for this claim_id, saved by
+           another request in the meantime, answer 409 DUPLICATE_PAYMENT.
+        5. Answer 201 with the saved payment.
+
+        The Redis lock. Before step 1, take a lock in Redis: set the key
+        payment-lock:{claim_id} to the copy's instance name, only if the key
+        does not exist yet, with a time to live of 30 seconds (the Redis
+        command SET with NX and EX 30).
+        - If the key already exists, another request is paying this claim at
+          this moment: answer 409 DUPLICATE_PAYMENT, and do not call the bank.
+        - If Redis is not available, log a warning and carry on without the
+          lock. The UNIQUE claim_id in step 4 still stops a second payment
+          from being saved, but the bank may pay twice.
+        When the request ends, after step 5 or with an error, delete the key.
+        If that fails, the key expires by itself after 30 seconds.
+
+        A failed payment is a normal answer: 201 with status FAILED. The
+        payment was attempted and recorded; the bank did not pay.
+
+        If the bank answers 201 but its answer does not match bank-api.yaml,
+        payment-service cannot tell what the bank did. It saves nothing, and
+        answers 500 INTERNAL_ERROR.
+
+        Errors: an invalid or unknown field in the request answers 422
+        VALIDATION_FAILED, naming the field. If the database is not
+        available, 503 DEPENDENCY_UNAVAILABLE; any other unexpected error,
+        500 INTERNAL_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '201':
+          description: The payment, completed or failed. A failed payment is still a 201.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '409':
+          $ref: '#/components/responses/DuplicatePayment'
+        '422':
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+        '500':
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+        '503':
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+  /payments/{payment_id}:
+    get:
+      operationId: getPayment
+      description: >
+        Reads one payment from the database. If the database is not
+        available, answers 503 with the code DEPENDENCY_UNAVAILABLE. Any
+        other unexpected error answers 500 with the code INTERNAL_ERROR.
+      parameters:
+        - name: payment_id
+          in: path
+          required: true
+          schema:
+            $ref: '../common/common.yaml#/components/schemas/PaymentId'
+      responses:
+        '200':
+          description: The payment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '404':
+          $ref: '../common/common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+        '500':
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+        '503':
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+components:
+  responses:
+    DuplicatePayment:
+      description: >
+        The database already holds a payment for this claim. The error
+        answer from common.yaml, with the code DUPLICATE_PAYMENT.
+      content:
+        application/json:
+          schema:
+            $ref: '../common/common.yaml#/components/schemas/Error'
+
+  schemas:
+    PaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [claim_id, customer_id, amount]
+      properties:
+        claim_id:
+          $ref: '../common/common.yaml#/components/schemas/ClaimId'
+        customer_id:
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1000000
+          description: The amount to pay. More than 0, at most 1000000, at most two decimals.
+
+    Payment:
+      type: object
+      additionalProperties: false
+      required: [payment_id, claim_id, customer_id, amount, status, bank_transfer_id,
+                 failure_reason, created_at]
+      properties:
+        payment_id:
+          $ref: '../common/common.yaml#/components/schemas/PaymentId'
+        claim_id:
+          $ref: '../common/common.yaml#/components/schemas/ClaimId'
+        customer_id:
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+        amount:
+          $ref: '../common/common.yaml#/components/schemas/Money'
+        status:
+          type: string
+          enum: [COMPLETED, FAILED]
+        bank_transfer_id:
+          type: [string, 'null']
+          description: The bank's transfer_id when COMPLETED; null when FAILED.
+          examples: [TRF-8C41E07A9B2D]
+        failure_reason:
+          type: [string, 'null']
+          enum: [BANK_TIMEOUT, BANK_ERROR, null]
+          description: Why the payment failed; null when COMPLETED.
+        created_at:
+          type: string
+          format: date-time
+          description: When the payment was saved, in UTC.
+ 

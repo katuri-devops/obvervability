@@ -1,0 +1,162 @@
+openapi: 3.1.0
+info:
+  title: bank-api
+  version: 1.0.0
+  description: |
+    The API of the bank that pays approved claims. bank-api plays the part of
+    an outside provider, the way a real bank's API would. It is given to you
+    ready-made: your assistant never builds or changes it. Only
+    payment-service calls it.
+
+    Because the bank is not one of our services, it does not follow
+    PROJECT_RULES.md or the error answer in common.yaml:
+    - It runs as one copy, and is called directly at http://bank-api:8000,
+      not through Traefik.
+    - Its errors have their own body, BankError, with the fields error_code
+      and error_message.
+    - A request it cannot accept answers 400, not 422.
+    - An unknown address answers 404 with the error_code NOT_FOUND, and a
+      wrong HTTP method answers 405 with the error_code METHOD_NOT_ALLOWED.
+
+    Only its health answer is the same as our services', so that Docker can
+    check it the same way.
+
+servers:
+  - url: http://bank-api:8000
+    description: From payment-service, on the network claims-net
+
+paths:
+  /health:
+    get:
+      operationId: health
+      description: The shared health answer, with "service" set to "bank-api".
+      responses:
+        '200':
+          $ref: '../common/common.yaml#/components/responses/Health'
+
+  /transfers:
+    post:
+      operationId: createTransfer
+      description: |
+        Sends money to a customer, for one claim. A transfer normally takes
+        between 0.1 and 0.5 seconds.
+
+        The bank does not check for duplicates. Every request it accepts is
+        a new transfer, even with a reference it has seen before. Making sure
+        that a claim is paid only once is the caller's job.
+
+        Like any outside provider, the bank can be slow, can fail, or can
+        stop answering. Its caller must be ready for each of these.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '201':
+          description: The money has been sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          description: >
+            The request is not valid: a field is missing, has the wrong type
+            or value, or is not part of the request. Nothing was sent. The
+            error_code is INVALID_REQUEST.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankError'
+        '500':
+          description: >
+            The bank failed. Nothing was sent. The error_code is
+            TECHNICAL_ERROR.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankError'
+
+components:
+  schemas:
+    TransferRequest:
+      type: object
+      additionalProperties: false
+      required: [reference, customer_id, amount]
+      properties:
+        reference:
+          type: string
+          minLength: 1
+          maxLength: 35
+          description: >
+            The caller's own reference for the transfer, shown on the
+            customer's bank statement. payment-service sends the claim's ID.
+          examples: [CLM-100001]
+        customer_id:
+          type: string
+          minLength: 1
+          maxLength: 35
+          description: >
+            The customer to pay, as the bank knows them. payment-service sends
+            the customer's ID.
+          examples: [C-1001]
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1000000
+          description: >
+            The amount to send, as a JSON number with at most two decimals,
+            for example 700.5. Never a string.
+          examples: [700.5]
+
+    Transfer:
+      type: object
+      additionalProperties: false
+      required: [transfer_id, reference, customer_id, amount, status, completed_at]
+      properties:
+        transfer_id:
+          type: string
+          pattern: '^TRF-[0-9A-F]{12}$'
+          description: >
+            The bank's own ID for the transfer. payment-service saves it as
+            bank_transfer_id.
+          examples: [TRF-8C41E07A9B2D]
+        reference:
+          type: string
+          description: The reference from the request.
+        customer_id:
+          type: string
+          description: The customer_id from the request.
+        amount:
+          type: number
+          description: The amount sent, as in the request.
+        status:
+          const: COMPLETED
+          description: Always COMPLETED. The bank answers 201 only once the money is sent.
+        completed_at:
+          type: string
+          format: date-time
+          description: When the money was sent, in UTC.
+          examples: ['2026-10-18T09:41:27Z']
+
+    BankError:
+      type: object
+      additionalProperties: false
+      required: [error_code, error_message]
+      properties:
+        error_code:
+          type: string
+          description: Each code belongs to one HTTP status, shown after it.
+          enum:
+            - INVALID_REQUEST     # 400
+            - NOT_FOUND           # 404
+            - METHOD_NOT_ALLOWED  # 405
+            - TECHNICAL_ERROR     # 500
+        error_message:
+          type: string
+          description: One sentence for a person to read.
+      examples:
+        - error_code: INVALID_REQUEST
+          error_message: amount must be greater than 0.
+ 

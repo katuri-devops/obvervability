@@ -1,0 +1,47 @@
+Read these files in this project: PROJECT_RULES.md,
+common.yaml, bank-api.yaml and
+payment-api.yaml.
+
+Build payment-service exactly as payment-api.yaml describes, following
+PROJECT_RULES.md. This step covers only:
+- GET /health
+- POST /payments, calling the bank and saving the payment
+- GET /payments/{payment_id}
+Do not add the Redis lock yet.
+
+1. Create the folder app/payment-service with a Dockerfile,
+   requirements.txt and main.py, as PROJECT_RULES.md sections 5 to 7
+   describe.
+2. Add payment-service to app/compose.yaml in the form PROJECT_RULES.md
+   section 7 shows, with payment-service in place of customer-service
+   everywhere, and with the variable BANK_URL from section 8. Do not change
+   the other services in that file.
+3. Follow the five steps of POST /payments in payment-api.yaml, in that
+   order. Call the bank with one httpx.AsyncClient, created at start-up,
+   with a timeout of exactly 10 seconds.
+4. Handle every case in step 3 of the contract: the bank answers 201, does
+   not answer within 10 seconds, answers any other status, or cannot be
+   reached. A failed payment is saved, and answered with 201.
+5. The UNIQUE claim_id in the database is the last guard against paying
+   twice. When saving fails because of it, answer 409 DUPLICATE_PAYMENT,
+   not 500.
+6. The request body accepts exactly its three fields. Any other field gets
+   422, VALIDATION_FAILED, with the field's name in "fields" and the message
+   "This field is not allowed." claim_id, customer_id and payment_id must
+   match their patterns in common.yaml. Calculate money with Decimal, and
+   send it as JSON numbers.
+7. Every error answer uses the Error schema in common.yaml, never FastAPI's
+   {"detail": ...}:
+   - unknown payment, or unknown address: 404, NOT_FOUND
+   - invalid ID or request field: 422, VALIDATION_FAILED, with "fields"
+   - claim that already has a payment: 409, DUPLICATE_PAYMENT
+   - wrong HTTP method: 405, METHOD_NOT_ALLOWED
+   - database not available: 503, DEPENDENCY_UNAVAILABLE
+   - any other error: 500, INTERNAL_ERROR
+8. Use only the schema "payment". payment_id and created_at come from the
+   database. Never create or change tables.
+
+When you are done, tell me the command that builds and starts the service,
+and how to try it. Then stop.
+
+ 
