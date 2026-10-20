@@ -1,0 +1,240 @@
+openapi: 3.1.0
+info:
+  title: claims-api
+  version: 1.1.0
+  description: >
+    The API of claims-api. It receives a customer's claim, checks the customer
+    with customer-service and the policy with policy-service, decides the
+    claim, saves it, and has approved claims paid by payment-service.
+    claims-api owns the database schema "claim". It calls the other services
+    through Traefik, at the addresses in the environment variables
+    CUSTOMER_SERVICE_URL, POLICY_SERVICE_URL and PAYMENT_SERVICE_URL. For
+    each decided claim it sends the message claim.decided through RabbitMQ,
+    as contracts/messages/claim-decided/claim-decided.yaml describes. The
+    message is added in a later step; until then, claims-api sends nothing.
+    Like every service, it answers a wrong HTTP method with 405 and the code
+    METHOD_NOT_ALLOWED (see common.yaml).
+
+servers:
+  - url: http://traefik:8000/claims-api
+    description: From another service, through Traefik
+  - url: http://localhost:8080/claims-api
+    description: From your browser
+
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          $ref: '../common/common.yaml#/components/responses/Health'
+
+  /claims:
+    post:
+      operationId: submitClaim
+      description: |
+        Receives one claim and decides it, while the customer waits.
+
+        The steps, in this order:
+
+        1. Check the request. Besides the schema, incident_date must not be
+           after today's date in UTC. Any problem: 422 VALIDATION_FAILED,
+           naming each field. Nothing is saved.
+        2. Ask customer-service: GET {CUSTOMER_SERVICE_URL}/customers/{customer_id}.
+           Wait at most 5 seconds.
+           - 404 with the error answer NOT_FOUND from common.yaml: answer 422
+             VALIDATION_FAILED, naming customer_id, with the message "There
+             is no customer with this ID." Stop.
+           - 200 with an answer as customer-api.yaml describes: keep the
+             customer's status for step 4.
+           - Anything else, no answer within 5 seconds, or customer-service
+             cannot be reached: answer 503 DEPENDENCY_UNAVAILABLE. Stop.
+             This includes Traefik's own plain-text "404 page not found",
+             which means that no copy of customer-service is running.
+        3. Ask policy-service, whatever the customer's status:
+           POST {POLICY_SERVICE_URL}/policies/{policy_id}/coverage-check, with
+           customer_id, incident_date and amount_claimed. Wait at most 5
+           seconds.
+           - 404 with the error answer NOT_FOUND from common.yaml: answer 422
+             VALIDATION_FAILED, naming policy_id, with the message "There is
+             no policy with this ID." Stop.
+           - 200 with reason POLICY_NOT_OWNED: answer 422 VALIDATION_FAILED,
+             naming policy_id, with the message "This policy does not belong
+             to this customer." Stop.
+           - 200 otherwise, with an answer as policy-api.yaml describes: keep
+             the answer for step 4.
+           - Anything else, no answer within 5 seconds, or policy-service
+             cannot be reached: answer 503 DEPENDENCY_UNAVAILABLE. Stop.
+             This includes Traefik's own "404 page not found".
+        4. Decide the claim. The first rule that applies decides:
+           a. The customer's status is not ACTIVE: status REJECTED, reason
+              CUSTOMER_NOT_ACTIVE, approved_amount null.
+           b. covered is false: status REJECTED, reason from the coverage
+              check, approved_amount null.
+           c. payable_amount is more than 5000: status UNDER_REVIEW, reason
+              ABOVE_REVIEW_LIMIT, approved_amount = payable_amount. A person
+              reviews the claim later; it is not paid now.
+           d. Otherwise: status APPROVED, reason null, approved_amount =
+              payable_amount.
+        5. Save the claim in the table claim.claims. The database creates
+           claim_id, created_at and updated_at.
+        6. Only if the status is APPROVED, ask payment-service:
+           POST {PAYMENT_SERVICE_URL}/payments, with claim_id, customer_id and
+           amount = approved_amount. Wait at most 15 seconds, because
+           payment-service itself waits up to 10 seconds for the bank.
+           - 201 with status COMPLETED: status PAID, payment_id from the
+             answer.
+           - 201 with status FAILED: status PAYMENT_FAILED, reason
+             PAYMENT_ERROR, payment_id from the answer.
+           - Anything else, no answer within 15 seconds, or payment-service
+             cannot be reached: status PAYMENT_FAILED, reason PAYMENT_ERROR,
+             payment_id null. This includes an answer that does not match
+             payment-api.yaml, and Traefik's own "404 page not found".
+           Then save the new status, reason and payment_id in the claim, and
+           set updated_at to the current time.
+        7. Answer 201 with the claim.
+
+        The message claim.decided. After the claim's final status is saved,
+        in step 6 for an approved claim and in step 5 for any other, and
+        before step 7, send one message claim.decided, as
+        claim-decided.yaml describes. Its fields are the claim's claim_id,
+        customer_id, policy_id, status, reason, approved_amount and
+        payment_id, as saved, and decided_at, the claim's updated_at. Wait at
+        most 2 seconds for RabbitMQ to confirm it. If RabbitMQ is not
+        available, or does not confirm in time, log a warning and answer
+        anyway: the claim is saved, only its message is lost. A request that
+        saves no claim (422, or 503 before step 5) sends no message.
+
+        A rejected claim, a claim under review and a claim whose payment
+        failed are all normal answers: 201, with the claim as saved.
+
+        Errors: if the database is not available, 503
+        DEPENDENCY_UNAVAILABLE. Any other unexpected error, 500
+        INTERNAL_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimRequest'
+      responses:
+        '201':
+          description: The decided claim, whatever the decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '422':
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+        '500':
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+        '503':
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+  /claims/{claim_id}:
+    get:
+      operationId: getClaim
+      description: >
+        Reads one claim from the database, as the customer sees its status.
+        If the database is not available, answers 503 with the code
+        DEPENDENCY_UNAVAILABLE. Any other unexpected error answers 500 with
+        the code INTERNAL_ERROR.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema:
+            $ref: '../common/common.yaml#/components/schemas/ClaimId'
+      responses:
+        '200':
+          description: The claim.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Claim'
+        '404':
+          $ref: '../common/common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+        '500':
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+        '503':
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+components:
+  schemas:
+    ClaimRequest:
+      type: object
+      additionalProperties: false
+      required: [customer_id, policy_id, incident_date, description, amount_claimed]
+      properties:
+        customer_id:
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+        policy_id:
+          $ref: '../common/common.yaml#/components/schemas/PolicyId'
+        incident_date:
+          type: string
+          format: date
+          description: The day the incident happened, for example 2026-10-17. Not after today.
+        description:
+          type: string
+          minLength: 10
+          maxLength: 1000
+          description: What happened, in the customer's words. 10 to 1000 characters.
+        amount_claimed:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1000000
+          description: The amount the customer asks for. More than 0, at most 1000000, at most two decimals.
+
+    Claim:
+      type: object
+      additionalProperties: false
+      required: [claim_id, customer_id, policy_id, incident_date, description, amount_claimed,
+                 approved_amount, status, reason, payment_id, created_at, updated_at]
+      properties:
+        claim_id:
+          $ref: '../common/common.yaml#/components/schemas/ClaimId'
+        customer_id:
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+        policy_id:
+          $ref: '../common/common.yaml#/components/schemas/PolicyId'
+        incident_date:
+          type: string
+          format: date
+        description:
+          type: string
+        amount_claimed:
+          $ref: '../common/common.yaml#/components/schemas/Money'
+        approved_amount:
+          description: The amount the policy pays. null when the claim is REJECTED.
+          anyOf:
+            - $ref: '../common/common.yaml#/components/schemas/Money'
+            - type: 'null'
+        status:
+          type: string
+          description: >
+            APPROVED appears only for the moment while the payment is running.
+            A finished claim is REJECTED, UNDER_REVIEW, PAID or PAYMENT_FAILED.
+          enum: [APPROVED, REJECTED, UNDER_REVIEW, PAID, PAYMENT_FAILED]
+        reason:
+          type: [string, 'null']
+          description: Why the claim is not simply paid; null for APPROVED and PAID.
+          enum: [CUSTOMER_NOT_ACTIVE, POLICY_NOT_ACTIVE, INCIDENT_OUTSIDE_POLICY_PERIOD,
+                 BELOW_DEDUCTIBLE, ABOVE_REVIEW_LIMIT, PAYMENT_ERROR, null]
+        payment_id:
+          description: >
+            The payment's ID when payment-service answered with a payment,
+            completed or failed; otherwise null.
+          anyOf:
+            - $ref: '../common/common.yaml#/components/schemas/PaymentId'
+            - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+          description: When the claim was saved, in UTC.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the claim last changed, in UTC.
+ 

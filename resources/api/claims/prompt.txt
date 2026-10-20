@@ -1,0 +1,46 @@
+Read these files in this project: PROJECT_RULES.md,
+common.yaml,
+customer-api.yaml,
+policy-api.yaml,
+payment-api.yaml and
+claims-api.yaml.
+
+Build claims-api exactly as claims-api.yaml describes, following
+PROJECT_RULES.md. This step covers only:
+- GET /health
+- POST /claims, calling the three services and saving the claim
+- GET /claims/{claim_id}
+Do not add RabbitMQ yet.
+
+1. Create the folder app/claims-api with a Dockerfile, requirements.txt
+   and main.py, as PROJECT_RULES.md sections 5 to 7 describe.
+2. Add claims-api to app/compose.yaml in the form PROJECT_RULES.md
+   section 7 shows, with claims-api in place of customer-service
+   everywhere, and with the variables CUSTOMER_SERVICE_URL,
+   POLICY_SERVICE_URL and PAYMENT_SERVICE_URL from section 8. Do not
+   change the other services in that file.
+3. Follow the seven steps of POST /claims in claims-api.yaml, in that
+   order. Use one httpx.AsyncClient, created at start-up, and set the
+   timeout of each call exactly as the contract says: 5 seconds for
+   customer-service and policy-service, 15 seconds for payment-service.
+4. Handle every case the contract lists for each call. Read the answers
+   of the other services as their contracts describe them.
+5. The request body accepts exactly its five fields. Any other field gets
+   422, VALIDATION_FAILED, with the field's name in "fields" and the
+   message "This field is not allowed." customer_id, policy_id and
+   claim_id must match their patterns in common.yaml. Calculate money
+   with Decimal, and send it as JSON numbers.
+6. Every error answer uses the Error schema in common.yaml, never
+   FastAPI's {"detail": ...}:
+   - unknown claim, or unknown address: 404, NOT_FOUND
+   - invalid ID or request field, unknown customer or policy, or a
+     policy of another customer: 422, VALIDATION_FAILED, with "fields"
+   - wrong HTTP method: 405, METHOD_NOT_ALLOWED
+   - customer-service, policy-service or the database not available:
+     503, DEPENDENCY_UNAVAILABLE
+   - any other error: 500, INTERNAL_ERROR
+7. Use only the schema "claim". claim_id, created_at and updated_at come
+   from the database. Never create or change tables.
+
+When you are done, tell me the command that builds and starts the
+service, and how to try it. Then stop.

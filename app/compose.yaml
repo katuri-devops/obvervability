@@ -127,6 +127,40 @@ services:
     networks:
       - claims-net
 
+  claims-api:
+    build:
+      context: .
+      dockerfile: claims-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: claims-api
+      DATABASE_URL: postgresql+psycopg://claims:claims-dev-password@postgres:5432/claims?application_name=claims-api
+      CUSTOMER_SERVICE_URL: http://traefik:8000/customer-service
+      POLICY_SERVICE_URL: http://traefik:8000/policy-service
+      PAYMENT_SERVICE_URL: http://traefik:8000/payment-service
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.claims-api.rule=PathPrefix(`/claims-api`)
+      - traefik.http.routers.claims-api.entrypoints=web,internal
+      - traefik.http.routers.claims-api.middlewares=claims-api-strip
+      - traefik.http.middlewares.claims-api-strip.stripprefix.prefixes=/claims-api
+      - traefik.http.services.claims-api.loadbalancer.server.port=8000
+      - traefik.http.services.claims-api.loadbalancer.healthcheck.path=/health
+      - traefik.http.services.claims-api.loadbalancer.healthcheck.interval=5s
+    networks:
+      - claims-net
+
   # The bank, given ready-made. It plays an outside provider: one copy,
   # called directly at http://bank-api:8000, not through Traefik.
   bank-api:
