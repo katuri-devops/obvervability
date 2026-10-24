@@ -106,6 +106,7 @@ services:
       SERVICE_NAME: payment-service
       DATABASE_URL: postgresql+psycopg://claims:claims-dev-password@postgres:5432/claims?application_name=payment-service
       BANK_URL: http://bank-api:8000
+      REDIS_URL: redis://redis:6379/0
     deploy:
       replicas: 2
       resources:

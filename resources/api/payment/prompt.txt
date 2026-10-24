@@ -44,4 +44,32 @@ Do not add the Redis lock yet.
 When you are done, tell me the command that builds and starts the service,
 and how to try it. Then stop.
 
+ === 12d-1 · payment-api · Add the Redis lock ===
+
+Read these files in this project again: PROJECT_RULES.md,
+contracts/api/common/common.yaml, contracts/api/bank-api/bank-api.yaml and
+contracts/api/payment-api/payment-api.yaml.
+
+Add the Redis lock to payment-service, exactly as the paragraph
+"The Redis lock" of POST /payments in payment-api.yaml describes,
+following PROJECT_RULES.md section 14.
+
+1. Add redis to app/payment-service/requirements.txt, at the version in
+   PROJECT_RULES.md section 5.
+2. Add the variable REDIS_URL from section 8 to the payment-service
+   entry in app/compose.yaml. Change nothing else in that file.
+3. Before step 1, take the lock in one Redis command: the key
+   payment-lock:{claim_id}, set to this copy's instance name, only if the
+   key does not exist yet, with a time to live of 30 seconds.
+4. If the key already exists, answer 409 DUPLICATE_PAYMENT, and do not
+   call the bank.
+5. Wait at most 1 second for Redis, and try each command once. If Redis
+   is not available, log a WARNING and go on without the lock.
+6. Delete the key when the request ends, whatever the result, errors
+   included. If the delete fails, log a WARNING and go on.
+7. Keep everything else as it is: the five steps, the answers and the
+   error answers.
+
+When you are done, tell me the command that builds and starts the
+service, and how to see the lock work. Then stop.
  

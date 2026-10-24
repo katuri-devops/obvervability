@@ -12,6 +12,10 @@ import httpx
 from fastapi import FastAPI, Path, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError, field_validator, model_validator
+from redis.asyncio import Redis
+from redis.backoff import NoBackoff
+from redis.exceptions import RedisError
+from redis.retry import Retry
 from sqlalchemy import text
 from sqlalchemy.exc import (
     DBAPIError,
@@ -35,6 +39,7 @@ DATABASE_URL = os.getenv(
     "?application_name=payment-service",
 )
 BANK_URL = os.getenv("BANK_URL", "http://bank-api:8000").rstrip("/")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 engine = create_async_engine(DATABASE_URL)
 
 CLAIM_ID = r"^CLM-[0-9]{6,}$"
@@ -82,6 +87,13 @@ async def retry_database_connection():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.bank_client = httpx.AsyncClient(timeout=10.0)
+    app.state.redis_client = Redis.from_url(
+        REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+        retry=Retry(NoBackoff(), 0),
+    )
     retry_task = asyncio.create_task(retry_database_connection())
     try:
         yield
@@ -89,6 +101,7 @@ async def lifespan(app: FastAPI):
         retry_task.cancel()
         with suppress(asyncio.CancelledError):
             await retry_task
+        await app.state.redis_client.aclose()
         await app.state.bank_client.aclose()
         await engine.dispose()
 
@@ -388,24 +401,57 @@ async def health():
 
 @app.post("/payments", status_code=201)
 async def create_payment(request: PaymentRequest):
-    if await payment_exists(request.claim_id):
-        raise APIError(
-            409,
-            "DUPLICATE_PAYMENT",
-            "A payment already exists for this claim.",
-        )
+    lock_key = f"payment-lock:{request.claim_id}"
+    lock_acquired = False
+    try:
+        try:
+            lock_result = await app.state.redis_client.set(
+                lock_key,
+                socket.gethostname(),
+                nx=True,
+                ex=30,
+            )
+        except (RedisError, asyncio.TimeoutError):
+            logger.warning(
+                "Redis is unavailable; processing payment without a lock",
+                extra={"claim_id": request.claim_id},
+            )
+        else:
+            if lock_result is None:
+                raise APIError(
+                    409,
+                    "DUPLICATE_PAYMENT",
+                    "A payment already exists for this claim.",
+                )
+            lock_acquired = True
 
-    status, bank_transfer_id, failure_reason = await call_bank(request)
-    row = await save_payment(request, status, failure_reason, bank_transfer_id)
-    logger.info(
-        "Payment attempt saved",
-        extra={
-            "claim_id": request.claim_id,
-            "customer_id": request.customer_id,
-            "payment_id": row["payment_id"],
-        },
-    )
-    return payment_response(row)
+        if await payment_exists(request.claim_id):
+            raise APIError(
+                409,
+                "DUPLICATE_PAYMENT",
+                "A payment already exists for this claim.",
+            )
+
+        status, bank_transfer_id, failure_reason = await call_bank(request)
+        row = await save_payment(request, status, failure_reason, bank_transfer_id)
+        logger.info(
+            "Payment attempt saved",
+            extra={
+                "claim_id": request.claim_id,
+                "customer_id": request.customer_id,
+                "payment_id": row["payment_id"],
+            },
+        )
+        return payment_response(row)
+    finally:
+        if lock_acquired:
+            try:
+                await app.state.redis_client.delete(lock_key)
+            except (RedisError, asyncio.TimeoutError):
+                logger.warning(
+                    "Redis lock could not be deleted; it will expire automatically",
+                    extra={"claim_id": request.claim_id},
+                )
 
 
 @app.get("/payments/{payment_id}")
