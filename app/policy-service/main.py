@@ -1,17 +1,22 @@
 import asyncio
+import json
 import logging
 import os
 import re
 import socket
 from contextlib import asynccontextmanager
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Annotated
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from redis.asyncio import Redis
+from redis.backoff import NoBackoff
+from redis.exceptions import RedisError
+from redis.retry import Retry
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -21,8 +26,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("policy-service")
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "policy-service")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 POLICY_ID_PATTERN = re.compile(r"^P-[0-9]{4}$")
 engine = create_async_engine(os.environ["DATABASE_URL"])
+redis_client = None
 
 
 class APIError(Exception):
@@ -54,11 +61,21 @@ async def wait_for_database():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global redis_client
+    redis_client = Redis.from_url(
+        REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+        retry=Retry(NoBackoff(), 0),
+    )
     retry_task = asyncio.create_task(wait_for_database())
     try:
         yield
     finally:
         retry_task.cancel()
+        await redis_client.aclose()
+        redis_client = None
         await engine.dispose()
 
 
@@ -162,6 +179,42 @@ async def read_policy(policy_id: str):
             {"policy_id": "Enter a valid policy ID, such as P-2001."},
         )
 
+    cache_key = f"policy:{policy_id}"
+    cache_available = True
+    try:
+        cached_policy = await redis_client.get(cache_key)
+    except (RedisError, asyncio.TimeoutError):
+        cache_available = False
+        logger.warning(
+            "Redis is unavailable; reading policy from database",
+            extra={"policy_id": policy_id},
+        )
+        cached_policy = None
+
+    if cached_policy is not None:
+        try:
+            cached_data = json.loads(cached_policy)
+            if not isinstance(cached_data, dict):
+                raise ValueError("Cached policy is not an object")
+            row = {
+                "policy_id": cached_data["policy_id"],
+                "customer_id": cached_data["customer_id"],
+                "policy_type": cached_data["policy_type"],
+                "status": cached_data["status"],
+                "coverage_limit": Decimal(str(cached_data["coverage_limit"])),
+                "deductible": Decimal(str(cached_data["deductible"])),
+                "start_date": date.fromisoformat(cached_data["start_date"]),
+                "end_date": date.fromisoformat(cached_data["end_date"]),
+            }
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError, InvalidOperation):
+            cache_available = False
+            logger.warning(
+                "Redis policy entry is invalid; reading policy from database",
+                extra={"policy_id": policy_id},
+            )
+        else:
+            return row, "cache"
+
     query = text(
         """
         SELECT policy_id, customer_id, policy_type, status,
@@ -188,7 +241,26 @@ async def read_policy(policy_id: str):
     if row is None:
         raise APIError(404, "NOT_FOUND", "The requested policy was not found.")
 
-    return row
+    policy_data = {
+        "policy_id": row["policy_id"],
+        "customer_id": row["customer_id"],
+        "policy_type": row["policy_type"],
+        "status": row["status"],
+        "coverage_limit": money_number(row["coverage_limit"]),
+        "deductible": money_number(row["deductible"]),
+        "start_date": row["start_date"].isoformat(),
+        "end_date": row["end_date"].isoformat(),
+    }
+    if cache_available:
+        try:
+            await redis_client.set(cache_key, json.dumps(policy_data), ex=60)
+        except (RedisError, asyncio.TimeoutError):
+            logger.warning(
+                "Redis is unavailable; policy was not cached",
+                extra={"policy_id": policy_id},
+            )
+
+    return row, "database"
 
 
 def money_number(value: Decimal) -> float:
@@ -197,7 +269,7 @@ def money_number(value: Decimal) -> float:
 
 @app.get("/policies/{policy_id}")
 async def get_policy(policy_id: str):
-    row = await read_policy(policy_id)
+    row, source = await read_policy(policy_id)
     return {
         "policy_id": row["policy_id"],
         "customer_id": row["customer_id"],
@@ -207,13 +279,13 @@ async def get_policy(policy_id: str):
         "deductible": money_number(row["deductible"]),
         "start_date": row["start_date"],
         "end_date": row["end_date"],
-        "source": "database",
+        "source": source,
     }
 
 
 @app.post("/policies/{policy_id}/coverage-check")
 async def check_coverage(policy_id: str, request: CoverageCheckRequest):
-    row = await read_policy(policy_id)
+    row, _ = await read_policy(policy_id)
 
     reason = None
     payable = Decimal("0.00")

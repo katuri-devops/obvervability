@@ -33,3 +33,61 @@ Do not add the Redis cache yet: "source" is always "database".
 
 When you are done, tell me the command that builds and starts the service,
 and how to try it. Then stop.
+
+docker exec claims-redis-redis-1 redis-cli --raw GET customer:C-1002
+docker exec claims-redis-redis-1 redis-cli --raw TTL customer:C-1002
+ 
+=== 12c-1 · policy-api · Add the Redis cache ===
+
+
+Read these files in this project again: PROJECT_RULES.md,
+
+contracts/api/common/common.yaml and
+
+contracts/api/policy-api/policy-api.yaml.
+
+
+Add the Redis cache to policy-service, exactly as
+
+GET /policies/{policy_id} in policy-api.yaml describes, following
+
+PROJECT_RULES.md section 14. The coverage check reads the policy the same
+
+way.
+
+
+1. Add redis to app/policy-service/requirements.txt, at the version in
+
+  PROJECT_RULES.md section 5.
+
+2. Add the variable REDIS_URL from section 8 to the policy-service entry
+
+  in app/compose.yaml. Change nothing else in that file.
+
+3. Read the policy from Redis under the key policy:{policy_id}. If it is
+
+  there, use it, and answer GET /policies/{policy_id} with
+
+  "source": "cache". If not, read the database, store the policy in
+
+  Redis for 60 seconds, and answer with "source": "database". Store only
+
+  policies that exist.
+
+4. Wait at most 1 second for Redis, and try each command once. If Redis
+
+  is not available, log a WARNING and read the database, as if the
+
+  policy were not in Redis, without trying to store it. Redis is never a
+
+  reason to answer 503.
+
+5. Keep everything else as it is: the answers, the coverage rules, the
+
+  error answers and the checks of the request.
+
+
+When you are done, tell me the command that builds and starts the
+
+service, and how to see the cache work. Then stop.
+ 
