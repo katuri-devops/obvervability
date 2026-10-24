@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import socket
@@ -6,6 +7,10 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Path, Request
 from fastapi.exceptions import RequestValidationError
+from redis.asyncio import Redis
+from redis.backoff import NoBackoff
+from redis.exceptions import RedisError
+from redis.retry import Retry
 from sqlalchemy import text
 from sqlalchemy.exc import (
     DBAPIError,
@@ -27,7 +32,9 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg://claims:claims-dev-password@postgres:5432/claims"
     "?application_name=customer-service",
 )
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 engine = create_async_engine(DATABASE_URL)
+redis_client = None
 
 
 async def retry_database_connection():
@@ -43,11 +50,21 @@ async def retry_database_connection():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global redis_client
+    redis_client = Redis.from_url(
+        REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+        retry=Retry(NoBackoff(), 0),
+    )
     retry_task = asyncio.create_task(retry_database_connection())
     yield
     retry_task.cancel()
     with suppress(asyncio.CancelledError):
         await retry_task
+    await redis_client.aclose()
+    redis_client = None
     await engine.dispose()
 
 
@@ -116,6 +133,33 @@ async def health():
 
 @app.get("/customers/{customer_id}")
 async def get_customer(customer_id: str = Path(pattern=r"^C-[0-9]{4}$")):
+    cache_key = f"customer:{customer_id}"
+    cache_available = True
+    try:
+        cached_customer = await redis_client.get(cache_key)
+    except (RedisError, asyncio.TimeoutError):
+        cache_available = False
+        logger.warning(
+            "Redis is unavailable; reading customer from database",
+            extra={"customer_id": customer_id},
+        )
+        cached_customer = None
+
+    if cached_customer is not None:
+        try:
+            customer_data = json.loads(cached_customer)
+            if not isinstance(customer_data, dict):
+                raise ValueError("Cached customer is not an object")
+        except (json.JSONDecodeError, ValueError):
+            cache_available = False
+            logger.warning(
+                "Redis customer entry is invalid; reading customer from database",
+                extra={"customer_id": customer_id},
+            )
+        else:
+            customer_data["source"] = "cache"
+            return customer_data
+
     try:
         async with engine.connect() as connection:
             result = await connection.execute(
@@ -157,10 +201,18 @@ async def get_customer(customer_id: str = Path(pattern=r"^C-[0-9]{4}$")):
         return error_response(404, "NOT_FOUND", "The requested customer was not found.")
 
     logger.info("Customer found", extra={"customer_id": customer_id})
-    return {
+    customer_data = {
         "customer_id": customer["customer_id"],
         "full_name": customer["full_name"],
         "email": customer["email"],
         "status": customer["status"],
-        "source": "database",
     }
+    if cache_available:
+        try:
+            await redis_client.set(cache_key, json.dumps(customer_data), ex=60)
+        except (RedisError, asyncio.TimeoutError):
+            logger.warning(
+                "Redis is unavailable; customer was not cached",
+                extra={"customer_id": customer_id},
+            )
+    return {**customer_data, "source": "database"}

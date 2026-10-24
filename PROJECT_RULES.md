@@ -168,3 +168,53 @@ A later guide sets the exact log format, with shared code.
 | localhost:15432 | PostgreSQL. User `claims`, password `claims-dev-password`, database `claims`. |
 | localhost:16379 | Redis |
  
+
+ ## 14. Redis
+
+- Connect with `redis.asyncio`, at the address in `REDIS_URL`. Create one client at start-up, and reuse it.
+- Wait at most 1 second for Redis: set `socket_connect_timeout` and `socket_timeout` to 1 second. An error, or no answer within 1 second, means Redis is not available.
+- Try each Redis command once: turn off redis-py's own retries (`retry=Retry(NoBackoff(), 0)`), which would otherwise try again, with pauses, for several seconds.
+- If reading a record from Redis fails, read the database, and do not try to store the record in Redis in the same request. A request then waits for an unavailable Redis only once.
+- When Redis is not available, log a WARNING and carry on without it, as the contract says. Redis is never a reason to answer 503.
+- A cached record is the JSON text of the contract's answer without `source`, stored under the key the contract gives, with the time to live the contract gives.
+
+## 15. RabbitMQ
+
+- Connect with aio-pika's `connect_robust`, at the address in `RABBITMQ_URL`. Open one connection and one channel at start-up, in the background, and reuse them. `connect_robust` connects again by itself after RabbitMQ restarts.
+- Declare every exchange, queue and binding the message contract lists, with exactly its settings, as soon as the connection is open. Declaring is safe to repeat; a declaration with other settings is refused by RabbitMQ.
+- Send each message as the message contract says: JSON, with `content_type` `application/json`, persistent (`delivery_mode` 2), a new UUID as `message_id`, and the message's name as `type`.
+- Wait at most 2 seconds for RabbitMQ to confirm a message. When RabbitMQ is not available, or does not confirm in time, log a WARNING and carry on without the message. RabbitMQ is never a reason to answer 503.
+- Message headers are reserved for the trace context, added later in the course. Do not add headers of your own.
+- A service that receives messages takes one at a time (`prefetch_count` 1), and acknowledges each message itself, only when its work is saved. A message that can never be processed, because it cannot be read or refers to something that does not exist, is rejected without being put back, so that RabbitMQ moves it to the dead-letter queue. A message that fails because something it needs is down is put back after a pause of 5 seconds, as its contract says.
+
+## 16. Web pages
+
+The frontend serves the claims web pages, as `contracts/ui/frontend/frontend.yaml` describes. It is given ready-made, in the guide folder's `14-files`: its code, its page templates, its CSS, its one script and its images. Copy it as it is, and change it only when a guide tells you to.
+
+- It builds the pages with Jinja2 templates, and reads forms with python-multipart. It uses no JavaScript framework, and loads nothing from the internet: the frontend serves its own CSS, its one script and its images.
+- The frontend is served at the root of `http://localhost:8080`, so its entry in `app/compose.yaml` differs from section 7 in three ways: no `DATABASE_URL`, the variable `CLAIMS_API_URL` instead, and these labels, with no `stripprefix`:
+
+```yaml
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend.priority=1
+      - traefik.http.routers.frontend.entrypoints=web
+      - traefik.http.services.frontend.loadbalancer.server.port=8000
+      - traefik.http.services.frontend.loadbalancer.healthcheck.path=/health
+      - traefik.http.services.frontend.loadbalancer.healthcheck.interval=5s
+```
+
+  `priority=1` makes every service's own prefix, such as `/claims-api`, win over `/`.
+
+Every page follows these rules. Any change to the frontend keeps them:
+
+1. **A number field accepts only numbers.** It is a text field with `inputmode="decimal"` or `"numeric"`, never `type="number"`, which changes its value when the page scrolls over it. Other characters are blocked as they are typed; pasted or dropped text is filtered; limits and decimal places are enforced as the value is typed.
+2. **Every form is checked in the browser and again on the server, with the same rules,** written once in the server's code and given to the page's script through `data-*` attributes. Each error appears beside its field, in words that say what to do. The submit button stays enabled; submitting a wrong form shows every error and moves the focus to the first one. What the user typed is kept when there is an error.
+3. **A field error from the server** (a 4xx naming the field) **is shown beside that field.**
+4. **Every field has a visible label.** An error is linked to its field with `aria-describedby`, and the field marked with `aria-invalid="true"`.
+5. **A status is shown with a badge or words, never by a coloured left edge on a card.** A card has a full border or none.
+6. **The pages work at phone width,** without scrolling sideways.
+7. **No dialog closes on a click outside it.** A dialog, if one is ever needed, has a title bar with its name and a close button, and every dialog uses one shared piece of code.
+8. **An action that deletes or cannot be undone asks first,** in such a dialog, with focus on Cancel and a red confirm button that names the action.
+ 

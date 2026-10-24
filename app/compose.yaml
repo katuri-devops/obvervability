@@ -41,6 +41,7 @@ services:
     environment:
       SERVICE_NAME: customer-service
       DATABASE_URL: postgresql+psycopg://claims:claims-dev-password@postgres:5432/claims?application_name=customer-service
+      REDIS_URL: redis://redis:6379/0
     deploy:
       replicas: 2
       resources:

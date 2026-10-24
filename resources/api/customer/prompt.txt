@@ -49,4 +49,32 @@ PROJECT_RULES.md. This step covers only:
 
 When you are done, tell me the command that builds and starts the service,
 and the addresses to try in the browser. Then stop.
+
+=== 12b-1 · customer-api · Add the Redis cache ===
+ 
+Read these files in this project again: PROJECT_RULES.md,
+common.yaml and
+customer-api.yaml.
+ 
+Add the Redis cache to customer-service, exactly as
+GET /customers/{customer_id} in customer-api.yaml describes, following
+PROJECT_RULES.md section 14.
+ 
+1. Add redis to app/customer-service/requirements.txt, at the version in
+   PROJECT_RULES.md section 5.
+2. Add the variable REDIS_URL from section 8 to the customer-service
+   entry in app/compose.yaml. Change nothing else in that file.
+3. Read the customer from Redis under the key customer:{customer_id}. If
+   it is there, answer it with "source": "cache". If not, read the
+   database, store the customer in Redis for 60 seconds, and answer with
+   "source": "database". Store only customers that exist.
+4. Wait at most 1 second for Redis, and try each command once. If Redis
+   is not available, log a WARNING and read the database, as if the
+   customer were not in Redis, without trying to store it. Redis is never
+   a reason to answer 503.
+5. Keep everything else as it is: the answers, the error answers and the
+   checks of the request.
+ 
+When you are done, tell me the command that builds and starts the
+service, and how to see the cache work. Then stop.
  
