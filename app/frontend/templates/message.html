@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+{% from "_art.html" import message_scene %}
+{# The colour of each kind of message. #}
+{% set tones = {"not-found": "info", "not-allowed": "warning", "unavailable": "warning", "error": "danger"} %}
+
+<section class="band band-message">
+  <div class="container">
+    {# A drawing for the message. Decoration only: the card below says it in words. #}
+    <div class="scene scene-message" aria-hidden="true">{{ message_scene(kind) }}</div>
+  </div>
+</section>
+<div class="container overlap narrow">
+  <section class="card empty-state tone-{{ tones.get(kind, 'info') }}">
+    <p class="empty-kicker">Error {{ code }}</p>
+    <h1 class="empty-title">{{ title }}</h1>
+    <p class="empty-text">{{ text }}</p>
+    <div class="empty-actions">
+      <a href="/" class="button button-primary">
+        <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+        <span class="button-label">Back to the claim form</span>
+      </a>
+      <a href="/#track" class="button button-secondary">
+        <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+        <span class="button-label">Track a claim</span>
+      </a>
+    </div>
+  </section>
+</div>
+{% endblock %}

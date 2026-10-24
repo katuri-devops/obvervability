@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Claim {{ claim.claim_id }}{% endblock %}
+
+{% block content %}
+{# What the script keeps in this browser's list of recent claims. #}
+<div hidden data-remember-claim
+     data-claim-id="{{ claim.claim_id }}" data-status="{{ claim.status }}" data-status-name="{{ status_name }}"
+     data-amount="{{ approved_amount if approved_amount is not none else amount_claimed }}"
+     data-updated="{{ claim.updated_at }}"></div>
+
+{% from "_art.html" import status_scene %}
+<section class="band band-compact">
+  <div class="container hero-grid">
+  <div class="band-inner">
+    <a class="back-link" href="/"><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>Make a claim</a>
+    <p class="band-eyebrow">Claim status</p>
+    <div class="claim-title">
+      <h1 class="band-title">Claim <span id="claim-id" class="claim-number">{{ claim.claim_id }}</span></h1>
+      {# Shown by the page's script, which does the copying. #}
+      <button type="button" class="chip-button" data-copy="{{ claim.claim_id }}" hidden>
+        <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+        <span class="button-label" aria-live="polite">Copy ID</span>
+      </button>
+    </div>
+    <p class="band-lead">Submitted {{ submitted_at }}</p>
+  </div>
+  {# A drawing for the claim's status. Decoration only: the card below says it in words. #}
+  <div class="scene scene-status" aria-hidden="true">
+    {{ status_scene(claim.status, approved_amount if approved_amount is not none else "", amount_claimed, claim.reason) }}
+  </div>
+  </div>
+</section>
+
+{# "What happens next": under the status card on a phone, in the right-hand
+   column on a wide screen. The stylesheet shows one of the two (the other is
+   display: none, so a screen reader reads it once). #}
+{% macro next_card(place) %}
+    <section class="card side-card next-card next-{{ place }} tone-{{ look.tone }}" aria-labelledby="next-title-{{ place }}">
+      <div class="side-head">
+        <span class="side-icon" aria-hidden="true"><svg width="20" height="20" class="icon"><use href="#i-{{ look.icon }}"></use></svg></span>
+        <h2 id="next-title-{{ place }}" class="card-title">What happens next</h2>
+      </div>
+      <p class="next-text">{{ look.next }}</p>
+    </section>
+{% endmacro %}
+
+<div class="container overlap">
+  <div class="layout">
+    <div class="stack">
+      <section class="card status-card tone-{{ look.tone }}{% if claim.status == 'PAID' %} is-paid{% endif %}" aria-labelledby="claim-status">
+        <div class="status-head">
+          <div class="badge-wrap">
+            {# The status in words, as a badge: never shown by colour alone. #}
+            <p id="claim-status" class="status-badge" data-status="{{ claim.status }}"><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-{{ look.icon }}"></use></svg>{{ status_name }}</p>
+            {% if confetti %}
+            {# A short burst around the badge of a paid claim. Decoration only; none with reduced motion. #}
+            <span class="confetti" aria-hidden="true">
+              {%- for piece in confetti %}<i class="{{ 'wide' if piece.wide }}" style="--x: {{ piece.x }}px; --y: {{ piece.y }}px; --turn: {{ piece.turn }}deg; --colour: {{ piece.colour }}; --delay: {{ piece.delay }}ms"></i>{% endfor -%}
+            </span>
+            {% endif %}
+          </div>
+          <p class="status-time"><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>Last update {{ updated_at }}</p>
+        </div>
+        {% if status_text %}<p class="status-text">{{ status_text }}</p>{% endif %}
+
+        <ol class="tracker" style="--steps: {{ steps | length }}" aria-label="Progress of the claim">
+          {% for step in steps %}
+          <li class="step step-{{ step.state }}"{% if step.state == "current" %} aria-current="step"{% endif %}>
+            <span class="step-dot" aria-hidden="true">
+              {%- if step.state == "done" %}<svg width="20" height="20" class="icon"><use href="#i-check"></use></svg>
+              {%- elif step.state == "failed" %}<svg width="20" height="20" class="icon"><use href="#i-x"></use></svg>
+              {%- elif step.state == "upcoming" %}{{ loop.index }}{% endif -%}
+            </span>
+            <span class="step-text">
+              <span class="step-label">{{ step.label }}
+                <span class="visually-hidden">
+                  {%- if step.state == "done" %} (done){% elif step.state == "failed" %} (did not go through){% elif step.state == "current" %} (now){% else %} (still to come){% endif -%}
+                </span>
+              </span>
+              {% if step.time %}<span class="step-time">{{ step.time }}</span>{% endif %}
+            </span>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+
+      {{ next_card("inline") }}
+
+      <section class="stats" aria-label="Amounts">
+        <div class="stat">
+          <p class="stat-label">Amount claimed</p>
+          <p class="stat-value">{{ amount_claimed }}</p>
+          <p class="stat-note">What you asked for</p>
+        </div>
+        <div class="stat{% if approved_amount is not none %} stat-{{ look.tone }}{% endif %}">
+          <p class="stat-label">Approved amount</p>
+          {% if approved_amount is not none %}
+          <p class="stat-value">{{ approved_amount }}</p>
+          {% else %}
+          <p class="stat-value stat-empty">None</p>
+          {% endif %}
+          <p class="stat-note">{{ look.amount_note }}</p>
+        </div>
+
+        {# How much of the amount claimed was approved. #}
+        <div class="breakdown tone-{{ look.tone }}">
+          <div class="breakdown-head">
+            <p class="stat-label">Breakdown</p>
+            <p class="breakdown-percent">{% if breakdown.approved %}{{ breakdown.percent | round | int }}% approved{% else %}Not approved{% endif %}</p>
+          </div>
+          <div class="breakdown-bar" aria-hidden="true">
+            <span class="breakdown-fill" style="--share: {{ breakdown.percent }}%"></span>
+          </div>
+          <ul class="breakdown-legend">
+            {% if breakdown.approved %}
+            <li><span class="legend-dot legend-approved" aria-hidden="true"></span>Approved <strong>{{ breakdown.approved }}</strong></li>
+            <li><span class="legend-dot legend-rest" aria-hidden="true"></span>Not covered by the policy <strong>{{ breakdown.rest }}</strong></li>
+            {% else %}
+            <li><span class="legend-dot legend-rest" aria-hidden="true"></span>Not approved <strong>{{ breakdown.rest }}</strong></li>
+            {% endif %}
+          </ul>
+        </div>
+      </section>
+
+      {# The claim as a receipt. The wrapper carries the shadow, which the receipt's
+         perforated edges would otherwise cut off. #}
+      <div class="receipt-wrap">
+      <section class="receipt" aria-labelledby="details-title">
+        <div class="receipt-head">
+          <span class="receipt-brand">
+            <img src="/static/brand/aiiq-icon.png?v={{ asset_version }}" alt="" width="28" height="28">
+            <span><span class="brand-aiiq">aiiq</span>insure studio</span>
+          </span>
+          <span class="receipt-stamp tone-{{ look.tone }}">{{ status_name }}</span>
+        </div>
+        <h2 id="details-title" class="receipt-title">{% if claim.status == "PAID" %}Claim receipt{% else %}Claim summary{% endif %}</h2>
+        <dl class="details">
+          <div class="detail-row"><dt>Claim ID</dt><dd class="mono">{{ claim.claim_id }}</dd></div>
+          <div class="detail-row"><dt>Customer</dt><dd class="mono">{{ claim.customer_id }}</dd></div>
+          <div class="detail-row"><dt>Policy</dt><dd class="mono">{{ claim.policy_id }}</dd></div>
+          <div class="detail-row"><dt>Date of the incident</dt><dd>{{ incident_day }}</dd></div>
+          <div class="detail-row"><dt>Submitted</dt><dd>{{ submitted_at }}</dd></div>
+          <div class="detail-row"><dt>Last update</dt><dd>{{ updated_at }}</dd></div>
+          {% if claim.payment_id %}
+          <div class="detail-row"><dt>Payment reference</dt><dd class="mono">{{ claim.payment_id }}</dd></div>
+          {% endif %}
+          <div class="detail-row"><dt>Amount claimed</dt><dd class="mono">{{ amount_claimed }}</dd></div>
+          <div class="detail-row detail-total">
+            <dt>{% if claim.status == "PAID" %}Paid to your bank account{% else %}Approved amount{% endif %}</dt>
+            <dd class="mono">{{ approved_amount if approved_amount is not none else "None" }}</dd>
+          </div>
+        </dl>
+        <h3 class="quote-title">What happened</h3>
+        <blockquote class="quote">{{ claim.description }}</blockquote>
+        <div class="receipt-foot">
+          <svg class="barcode" viewBox="0 0 {{ barcode.width }} 40" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            {%- for bar in barcode.bars %}<rect x="{{ bar.x }}" y="0" width="{{ bar.w }}" height="40"/>{% endfor -%}
+          </svg>
+          <p class="receipt-note">Demonstration only. Not a real receipt, and no real money was paid.</p>
+        </div>
+      </section>
+      </div>
+    </div>
+
+    <aside class="side side-sticky">
+      {{ next_card("side") }}
+
+      <section class="card side-card actions-card" aria-labelledby="actions-title">
+        <h2 id="actions-title" class="card-title">Anything else?</h2>
+        <div class="action-list">
+          <a href="/" class="button button-primary button-block">
+            <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
+            <span class="button-label">Make another claim</span>
+          </a>
+          <a href="/#track" class="button button-secondary button-block">
+            <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+            <span class="button-label">Track another claim</span>
+          </a>
+          {# Shown by the page's script, which opens the print dialog. #}
+          <button type="button" class="button button-ghost button-block" data-print hidden>
+            <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-printer"></use></svg>
+            <span class="button-label">Print the receipt</span>
+          </button>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

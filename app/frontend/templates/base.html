@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}Claims{% endblock %} · aiiqinsure studio</title>
+  {# Every file address carries ?v=, which changes with each version, so a
+     browser never mixes this page with an older file from its cache. #}
+  <link rel="icon" href="/static/favicon.png?v={{ asset_version }}" type="image/png">
+  <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+  {# Not deferred: the script applies the chosen colour theme before the page is
+     drawn, so that the page never flashes in the other theme. The rest of the
+     script waits for the page itself. #}
+  <script src="/static/claims.js?v={{ asset_version }}"></script>
+</head>
+<body>
+  {% include "_icons.html" %}
+  <a class="skip-link" href="#main">Skip to the content</a>
+
+  {# Every page, including the error pages, has this title bar: the brand, "Claims", and a link to /. #}
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/" class="brand">
+        {# The AIIQ Labs wordmark, in the version for the current theme; the square mark on a phone. #}
+        <img class="brand-logo logo-on-light" src="/static/brand/aiiqlabs-on-light.png?v={{ asset_version }}" alt="AIIQ Labs" width="208" height="38">
+        <img class="brand-logo logo-on-dark" src="/static/brand/aiiqlabs-on-dark.png?v={{ asset_version }}" alt="AIIQ Labs" width="208" height="38">
+        <img class="brand-icon" src="/static/brand/aiiq-icon.png?v={{ asset_version }}" alt="AIIQ Labs" width="36" height="36">
+        <span class="brand-divider" aria-hidden="true"></span>
+        <span class="brand-text">
+          <span class="brand-product"><span class="brand-aiiq">aiiq</span>insure <span class="brand-studio">studio</span></span>
+          <span class="brand-section">Claims</span>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="/" class="nav-link nav-link-wide">Make a claim</a>
+        <a href="/#track" class="nav-link">
+          <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-search"></use></svg><span class="nav-link-text">Track a claim</span>
+        </a>
+        {# Shown by the script, which remembers the choice in this browser. #}
+        <button type="button" class="theme-switch" data-theme-switch hidden>
+          <svg width="20" height="20" class="icon theme-icon theme-icon-system" aria-hidden="true"><use href="#i-monitor"></use></svg>
+          <svg width="20" height="20" class="icon theme-icon theme-icon-light" aria-hidden="true"><use href="#i-sun"></use></svg>
+          <svg width="20" height="20" class="icon theme-icon theme-icon-dark" aria-hidden="true"><use href="#i-moon"></use></svg>
+          <span class="theme-label" data-theme-label>System</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  {# On every page: what this site is, and what it is not. #}
+  <section class="disclaimer" aria-labelledby="disclaimer-title">
+    <div class="container">
+      <div class="disclaimer-card">
+        <span class="disclaimer-icon" aria-hidden="true"><svg width="20" height="20" class="icon"><use href="#i-alert-triangle"></use></svg></span>
+        <div class="disclaimer-body">
+          <p class="disclaimer-kicker">Disclaimer</p>
+          <h2 id="disclaimer-title" class="disclaimer-title">For demonstration only</h2>
+          <p class="disclaimer-lead">
+            aiiqinsure studio is a demonstration system for training. It is not an insurance company,
+            and it does not sell, provide or arrange insurance of any kind.
+          </p>
+          <ul class="disclaimer-points">
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>No real claims are made, and no real cover exists.</li>
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>No real money is paid: the bank is simulated.</li>
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-x-circle"></use></svg>No email is sent: messages are only recorded.</li>
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-alert-circle"></use></svg>Do not enter real personal details.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span class="footer-brand">
+        <img src="/static/brand/aiiq-icon.png?v={{ asset_version }}" alt="" width="24" height="24">
+        <span><span class="brand-aiiq">aiiq</span>insure studio</span>
+      </span>
+      <span class="footer-credit">
+        For <a href="https://aiiqlabs.com" rel="noopener" target="_blank">aiiqlabs.com</a>
+        <span class="footer-dot" aria-hidden="true">·</span>
+        Built by <a href="https://aiiqlabs.dev" rel="noopener" target="_blank">aiiqlabs.dev</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>

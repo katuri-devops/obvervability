@@ -1,0 +1,250 @@
+{# The drawings in the bands of the status page and the message pages.
+   Decoration only: every page that shows one marks it aria-hidden, and says
+   the same thing in words. Each drawing is built from the small pieces below.
+   The colours are fixed: the band behind them is dark in both themes. #}
+
+{# Gradients, shadow and glow for one drawing. p keeps the ids apart. #}
+{% macro defs(p, glow) %}
+  <defs>
+    <radialGradient id="{{ p }}-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="{{ glow }}" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="{{ glow }}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="{{ p }}-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd98a"/>
+      <stop offset="0.55" stop-color="#e3a028"/>
+      <stop offset="1" stop-color="#b8760a"/>
+    </linearGradient>
+    <linearGradient id="{{ p }}-coin" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9a6206"/>
+      <stop offset="0.5" stop-color="#c9881a"/>
+      <stop offset="1" stop-color="#8a5703"/>
+    </linearGradient>
+    <linearGradient id="{{ p }}-paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e8ecf6"/>
+    </linearGradient>
+    <filter id="{{ p }}-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+{% endmacro %}
+
+{# The glow and the dotted ring behind a drawing. #}
+{% macro backdrop(p, cx, cy, r) %}
+  <circle cx="{{ cx }}" cy="{{ cy }}" r="{{ r }}" fill="url(#{{ p }}-glow)"/>
+  <circle cx="{{ cx }}" cy="{{ cy }}" r="{{ r * 0.76 }}" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-dasharray="3 7"/>
+{% endmacro %}
+
+{# A claim form on paper, 150 x 184, with a box for an amount. #}
+{% macro claim_card(p, x, y, label, value, accent) %}
+  <g transform="translate({{ x }} {{ y }})">
+    <rect width="150" height="184" rx="8" fill="url(#{{ p }}-paper)"/>
+    <rect x="16" y="16" width="30" height="30" rx="6" fill="#1b2350"/>
+    <text x="31" y="36" text-anchor="middle" font-size="12" font-weight="800" fill="#e3a028" font-family="system-ui, sans-serif">ai</text>
+    <rect x="56" y="20" width="76" height="8" rx="3" fill="#1b2350" fill-opacity="0.85"/>
+    <rect x="56" y="34" width="48" height="6" rx="3" fill="#98a2b3"/>
+    <rect x="16" y="62" width="118" height="6" rx="3" fill="#d0d5dd"/>
+    <rect x="16" y="76" width="104" height="6" rx="3" fill="#d0d5dd"/>
+    <rect x="16" y="90" width="88" height="6" rx="3" fill="#d0d5dd"/>
+    <rect x="16" y="110" width="118" height="48" rx="6" fill="{{ accent.soft }}" stroke="{{ accent.border }}"/>
+    <text x="26" y="128" font-size="8.5" font-weight="800" letter-spacing="1.2" fill="{{ accent.text }}" font-family="system-ui, sans-serif">{{ label }}</text>
+    <text x="26" y="149" font-size="16" font-weight="850" fill="#1b2350" font-family="system-ui, sans-serif">{{ value }}</text>
+  </g>
+{% endmacro %}
+
+{# Three gold coins, about 90 x 70. #}
+{% macro coins(p, x, y) %}
+  <g transform="translate({{ x }} {{ y }})">
+    <rect x="2" y="44" width="72" height="12" fill="url(#{{ p }}-coin)"/>
+    <ellipse cx="38" cy="56" rx="36" ry="10" fill="#8a5703"/>
+    <ellipse cx="38" cy="44" rx="36" ry="10" fill="url(#{{ p }}-gold)"/>
+    <rect x="8" y="27" width="72" height="12" fill="url(#{{ p }}-coin)"/>
+    <ellipse cx="44" cy="39" rx="36" ry="10" fill="#8a5703"/>
+    <ellipse cx="44" cy="27" rx="36" ry="10" fill="url(#{{ p }}-gold)"/>
+    <rect x="0" y="10" width="72" height="12" fill="url(#{{ p }}-coin)"/>
+    <ellipse cx="36" cy="22" rx="36" ry="10" fill="#8a5703"/>
+    <ellipse cx="36" cy="10" rx="36" ry="10" fill="url(#{{ p }}-gold)"/>
+    <ellipse cx="36" cy="10" rx="24" ry="6" fill="none" stroke="#fff3cf" stroke-opacity="0.7" stroke-width="2"/>
+  </g>
+{% endmacro %}
+
+{# The gold shield with a tick; (x, y) is the top of the shield. #}
+{% macro shield(p, x, y, s) %}
+  <g transform="translate({{ x }} {{ y }}) scale({{ s }})">
+    <path d="M0 0 l46 17 v38 c0 32 -22 53 -46 64 c-24 -11 -46 -32 -46 -64 v-38 z" fill="url(#{{ p }}-gold)"/>
+    <path d="M0 14 l32 12 v27 c0 23 -15 38 -32 46 c-17 -8 -32 -23 -32 -46 v-27 z" fill="#ffffff" fill-opacity="0.18"/>
+    <path d="M-18 58 l13 13 l25 -27" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+{% endmacro %}
+
+{# A bank, 120 x 126; (x, y) is its top left. #}
+{% macro bank(x, y) %}
+  <g transform="translate({{ x }} {{ y }})">
+    <polygon points="0,40 60,4 120,40" fill="#ffffff"/>
+    <circle cx="60" cy="27" r="7" fill="#e3a028"/>
+    <rect x="4" y="42" width="112" height="9" rx="2" fill="#ffffff"/>
+    <rect x="14" y="56" width="12" height="50" rx="2" fill="#ffffff" fill-opacity="0.92"/>
+    <rect x="40" y="56" width="12" height="50" rx="2" fill="#ffffff" fill-opacity="0.92"/>
+    <rect x="68" y="56" width="12" height="50" rx="2" fill="#ffffff" fill-opacity="0.92"/>
+    <rect x="94" y="56" width="12" height="50" rx="2" fill="#ffffff" fill-opacity="0.92"/>
+    <rect x="0" y="110" width="120" height="12" rx="2" fill="#ffffff"/>
+  </g>
+{% endmacro %}
+
+{# A small white note with a coloured round sign, a title and a line. #}
+{% macro note(x, y, w, colour, sign, title, sub) %}
+  <g transform="translate({{ x }} {{ y }})">
+    <rect width="{{ w }}" height="42" rx="7" fill="#ffffff"/>
+    <circle cx="21" cy="21" r="11" fill="{{ colour }}"/>
+    {% if sign == "check" %}<path d="M15.5 21 l4 4 l8 -8" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    {% elif sign == "clock" %}<circle cx="21" cy="21" r="5.5" fill="none" stroke="#ffffff" stroke-width="2"/><path d="M21 18 v3.2 l2.4 1.4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    {% elif sign == "x" %}<path d="M17.5 17.5 l7 7 M24.5 17.5 l-7 7" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+    {% else %}<path d="M21 15.5 v6.5 M21 25.5 v0.5" fill="none" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round"/>{% endif %}
+    <text x="40" y="18" font-size="10.5" font-weight="800" fill="#101828" font-family="system-ui, sans-serif">{{ title }}</text>
+    <text x="40" y="31" font-size="8.5" font-weight="600" fill="#667085" font-family="system-ui, sans-serif">{{ sub }}</text>
+  </g>
+{% endmacro %}
+
+{% macro sparkle(x, y, s, extra="") %}
+  <path class="tw {{ extra }}" transform="translate({{ x }} {{ y }}) scale({{ s }})" d="M0 -10 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z" fill="#ffd98a"/>
+{% endmacro %}
+
+{% set GREEN = {"soft": "#ecfdf3", "border": "#abefc6", "text": "#067647"} %}
+{% set AMBER = {"soft": "#fffaeb", "border": "#fedf89", "text": "#b54708"} %}
+{% set GOLD = {"soft": "#fdf4e3", "border": "#efd6a4", "text": "#8f5a00"} %}
+{% set GREY = {"soft": "#f2f4f7", "border": "#d0d5dd", "text": "#475467"} %}
+{% set REASONS = {
+  "CUSTOMER_NOT_ACTIVE": "Account not active",
+  "POLICY_NOT_ACTIVE": "Policy not active",
+  "INCIDENT_OUTSIDE_POLICY_PERIOD": "Outside the policy period",
+  "BELOW_DEDUCTIBLE": "Below the deductible",
+} %}
+
+{# ---------------------------------------------------------------------
+   The status page: one drawing for each status of a claim.
+   --------------------------------------------------------------------- #}
+{% macro status_scene(status, approved, claimed, reason) %}
+<svg viewBox="0 0 440 240" width="440" height="240" focusable="false">
+  {% if status == "PAID" %}
+    {{ defs("sa", "#47cd89") }}
+    {{ backdrop("sa", 236, 120, 122) }}
+    <g transform="rotate(-8 230 120)" opacity="0.5"><rect x="150" y="34" width="150" height="184" rx="8" fill="#ffffff" fill-opacity="0.16" stroke="#ffffff" stroke-opacity="0.35"/></g>
+    <g class="f1" filter="url(#sa-shadow)">{{ claim_card("sa", 160, 22, "PAID TO YOUR BANK", approved, GREEN) }}</g>
+    <g transform="rotate(-14 276 66)"><rect x="234" y="50" width="86" height="32" rx="5" fill="#ffffff" fill-opacity="0.9" stroke="#17b26a" stroke-width="3"/><text x="277" y="72" text-anchor="middle" font-size="15" font-weight="900" letter-spacing="3" fill="#17b26a" font-family="system-ui, sans-serif">PAID</text></g>
+    <g class="f2" filter="url(#sa-shadow)">{{ coins("sa", 54, 134) }}</g>
+    <g class="f3" filter="url(#sa-shadow)">{{ shield("sa", 372, 30, 0.82) }}</g>
+    <g class="f2" filter="url(#sa-shadow)">{{ note(300, 162, 128, "#17b26a", "check", "Claim paid", "Sent to your bank") }}</g>
+    {{ sparkle(126, 40, 1.1) }}{{ sparkle(420, 150, 0.8, "tw-2") }}{{ sparkle(36, 96, 0.7, "tw-3") }}
+
+  {% elif status == "UNDER_REVIEW" %}
+    {{ defs("sa", "#fdb022") }}
+    {{ backdrop("sa", 220, 120, 122) }}
+    <g class="f1" filter="url(#sa-shadow)">{{ claim_card("sa", 140, 22, "TO BE CONFIRMED", approved, AMBER) }}</g>
+    <g class="f2" filter="url(#sa-shadow)">
+      <line x1="334" y1="176" x2="366" y2="208" stroke="url(#sa-gold)" stroke-width="13" stroke-linecap="round"/>
+      <circle cx="306" cy="148" r="38" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-width="8"/>
+      <path d="M285 135 a24 24 0 0 1 21 -13" fill="none" stroke="#ffffff" stroke-opacity="0.8" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g class="f3" filter="url(#sa-shadow)">
+      <circle cx="356" cy="58" r="32" fill="#ffffff"/>
+      <circle cx="356" cy="58" r="25" fill="none" stroke="#f79009" stroke-width="4"/>
+      <path d="M356 42 v16 l11 7" fill="none" stroke="#1b2350" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g class="f2" filter="url(#sa-shadow)">{{ note(10, 182, 172, "#f79009", "clock", "With a claims handler", "We will write to you") }}</g>
+    {{ sparkle(110, 30, 0.9) }}{{ sparkle(412, 150, 0.7, "tw-2") }}
+
+  {% elif status == "REJECTED" %}
+    {{ defs("sa", "#f97066") }}
+    {{ backdrop("sa", 226, 120, 116) }}
+    <g class="f1" filter="url(#sa-shadow)">{{ claim_card("sa", 140, 22, "AMOUNT CLAIMED", claimed, GREY) }}</g>
+    <g class="f2" filter="url(#sa-shadow)" transform="rotate(-12 326 118)">
+      <circle cx="326" cy="118" r="42" fill="#fef3f2" stroke="#d92d20" stroke-width="5"/>
+      <circle cx="326" cy="118" r="33" fill="none" stroke="#d92d20" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <path d="M310 102 l32 32 M342 102 l-32 32" fill="none" stroke="#d92d20" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <g class="f3" filter="url(#sa-shadow)">{{ note(16, 176, 156, "#d92d20", "x", "Not covered", REASONS.get(reason, "See the reason below")) }}</g>
+
+  {% elif status == "PAYMENT_FAILED" %}
+    {{ defs("sa", "#fdb022") }}
+    {{ backdrop("sa", 220, 120, 122) }}
+    <g class="f1" filter="url(#sa-shadow)">{{ claim_card("sa", 20, 26, "APPROVED", approved, GOLD) }}</g>
+    <g class="f3" filter="url(#sa-shadow)">{{ bank(292, 44) }}</g>
+    <path d="M184 120 h38 M262 120 h22" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 9"/>
+    <g class="f2" filter="url(#sa-shadow)">
+      <path d="M242 96 l22 38 h-44 z" fill="url(#sa-gold)" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M242 109 v12 M242 127 v1" fill="none" stroke="#1b2350" stroke-width="3.5" stroke-linecap="round"/>
+    </g>
+    <g class="f2" filter="url(#sa-shadow)">{{ note(232, 186, 150, "#f79009", "alert", "Payment not made", "We will contact you") }}</g>
+
+  {% else %}{# APPROVED: being paid #}
+    {{ defs("sa", "#8aa0ff") }}
+    {{ backdrop("sa", 220, 120, 122) }}
+    <g class="f1" filter="url(#sa-shadow)">{{ claim_card("sa", 20, 26, "APPROVED", approved, GOLD) }}</g>
+    <g class="f3" filter="url(#sa-shadow)">{{ bank(292, 44) }}</g>
+    <line class="flow" x1="186" y1="120" x2="280" y2="120" stroke="#ffd98a" stroke-width="10" stroke-linecap="round" stroke-dasharray="1 19"/>
+    <path d="M272 110 l12 10 l-12 10" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <g class="f2" filter="url(#sa-shadow)">{{ note(232, 186, 150, "#3349c4", "clock", "Payment on its way", "Look again in a moment") }}</g>
+    {{ sparkle(200, 50, 0.9) }}
+  {% endif %}
+</svg>
+{% endmacro %}
+
+{# ---------------------------------------------------------------------
+   The message pages: one drawing for each kind of message.
+   --------------------------------------------------------------------- #}
+{% macro message_scene(kind) %}
+<svg viewBox="0 0 420 220" width="420" height="220" focusable="false">
+  {% if kind == "not-found" %}
+    {{ defs("ma", "#8aa0ff") }}
+    {{ backdrop("ma", 210, 110, 112) }}
+    <g class="f1" filter="url(#ma-shadow)">
+      <path d="M150 18 h86 l34 34 v150 a8 8 0 0 1 -8 8 h-112 a8 8 0 0 1 -8 -8 v-176 a8 8 0 0 1 8 -8 z" fill="url(#ma-paper)"/>
+      <path d="M236 18 v26 a8 8 0 0 0 8 8 h26" fill="#d0d5dd"/>
+      <rect x="160" y="40" width="58" height="7" rx="3" fill="#1b2350" fill-opacity="0.85"/>
+      <rect x="160" y="54" width="40" height="6" rx="3" fill="#98a2b3"/>
+      <text x="206" y="150" text-anchor="middle" font-size="80" font-weight="900" fill="#e3a028" font-family="system-ui, sans-serif">?</text>
+      <rect x="160" y="172" width="92" height="6" rx="3" fill="#d0d5dd"/>
+      <rect x="160" y="186" width="70" height="6" rx="3" fill="#d0d5dd"/>
+    </g>
+    <g class="f2" filter="url(#ma-shadow)">
+      <line x1="314" y1="160" x2="346" y2="192" stroke="url(#ma-gold)" stroke-width="12" stroke-linecap="round"/>
+      <circle cx="288" cy="134" r="34" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-width="7"/>
+      <path d="M270 122 a22 22 0 0 1 18 -12" fill="none" stroke="#ffffff" stroke-opacity="0.8" stroke-width="3.5" stroke-linecap="round"/>
+    </g>
+    {{ sparkle(118, 50, 1) }}{{ sparkle(330, 40, 0.8, "tw-2") }}{{ sparkle(96, 160, 0.7, "tw-3") }}
+
+  {% elif kind == "unavailable" %}
+    {{ defs("ma", "#fdb022") }}
+    {{ backdrop("ma", 210, 112, 112) }}
+    <g class="f1" filter="url(#ma-shadow)">{{ bank(150, 64) }}</g>
+    <g class="f3" filter="url(#ma-shadow)">
+      <path d="M318 30 a30 30 0 1 0 22 50 a24 24 0 1 1 -22 -50 z" fill="url(#ma-gold)"/>
+    </g>
+    <text class="tw" x="278" y="78" font-size="18" font-weight="900" fill="#ffffff" font-family="system-ui, sans-serif">z</text>
+    <text class="tw tw-2" x="292" y="58" font-size="24" font-weight="900" fill="#ffffff" font-family="system-ui, sans-serif">z</text>
+    <text class="tw tw-3" x="310" y="34" font-size="30" font-weight="900" fill="#ffffff" font-family="system-ui, sans-serif">Z</text>
+    <g class="f2" filter="url(#ma-shadow)">{{ note(24, 150, 150, "#f79009", "clock", "Back in a moment", "Please try again soon") }}</g>
+
+  {% elif kind == "not-allowed" %}
+    {{ defs("ma", "#f97066") }}
+    {{ backdrop("ma", 210, 108, 108) }}
+    <rect x="205" y="150" width="10" height="62" rx="3" fill="#ffffff" fill-opacity="0.75"/>
+    <g class="f1" filter="url(#ma-shadow)">
+      <circle cx="210" cy="96" r="60" fill="#d92d20" stroke="#ffffff" stroke-width="6"/>
+      <rect x="174" y="86" width="72" height="20" rx="4" fill="#ffffff"/>
+    </g>
+    {{ sparkle(120, 60, 0.8) }}{{ sparkle(310, 150, 0.7, "tw-2") }}
+
+  {% else %}{# error #}
+    {{ defs("ma", "#f97066") }}
+    {{ backdrop("ma", 210, 112, 112) }}
+    <g transform="rotate(-8 190 120)" opacity="0.55"><rect x="130" y="30" width="130" height="170" rx="8" fill="#ffffff" fill-opacity="0.16" stroke="#ffffff" stroke-opacity="0.35"/></g>
+    <g class="f1" filter="url(#ma-shadow)">
+      <path d="M210 26 l86 150 h-172 z" fill="url(#ma-gold)" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M210 82 v48 M210 150 v2" fill="none" stroke="#1b2350" stroke-width="12" stroke-linecap="round"/>
+    </g>
+    {{ sparkle(118, 60, 0.9) }}{{ sparkle(316, 70, 0.7, "tw-2") }}
+  {% endif %}
+</svg>
+{% endmacro %}

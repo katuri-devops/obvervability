@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}Make a claim{% endblock %}
+
+{% block content %}
+{# One form field: its label, the field with an optional icon (given by the
+   caller), a hint, and the element for its error. The field names the hint and
+   the error in aria-describedby. #}
+{% macro field(name, label, hint, error, icon=None) %}
+  <div class="field">
+    <label for="{{ name }}">{{ label }}</label>
+    <div class="control{% if icon %} has-icon{% endif %}">
+      {% if icon %}<svg width="20" height="20" class="icon control-icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg>{% endif %}
+      {{ caller() }}
+      <svg width="20" height="20" class="icon control-ok" aria-hidden="true"><use href="#i-check-circle"></use></svg>
+    </div>
+    <div class="field-foot">
+      <p class="hint" id="{{ name }}-hint">{{ hint }}</p>
+      {% if name == "description" %}<p class="counter" data-counter-for="description" aria-hidden="true"></p>{% endif %}
+    </div>
+    <p class="field-error" id="{{ name }}-error">{{ error or "" }}</p>
+  </div>
+{% endmacro %}
+
+{# The number of a form section; it turns into a tick when the section is complete. #}
+{% macro section_head(number, title, sub) %}
+  <legend class="section-head">
+    <span class="step-num" aria-hidden="true"><span class="step-num-text">{{ number }}</span><svg width="20" height="20" class="icon step-num-ok"><use href="#i-check"></use></svg></span>
+    <span><span class="section-title">{{ title }}</span><span class="section-sub">{{ sub }}</span></span>
+  </legend>
+{% endmacro %}
+
+<section class="band band-hero">
+  <div class="container hero-grid">
+    <div class="band-inner">
+      <p class="pill"><span class="pill-dot" aria-hidden="true"></span>aiiqinsure studio · Demonstration claims desk</p>
+      <h1 class="band-title">Make a claim.<br><span class="title-accent">Get an answer in seconds.</span></h1>
+      <p class="band-lead">Tell us what happened. Most claims are decided while you wait, and approved claims are paid straight to your bank account.</p>
+      <ul class="promises">
+        <li>
+          <span class="promise-icon" aria-hidden="true"><svg width="20" height="20" class="icon"><use href="#i-zap"></use></svg></span>
+          <span><strong>Decided in seconds</strong><span>An answer as soon as you submit</span></span>
+        </li>
+        <li>
+          <span class="promise-icon" aria-hidden="true"><svg width="20" height="20" class="icon"><use href="#i-landmark"></use></svg></span>
+          <span><strong>Paid to your bank</strong><span>Approved claims are paid at once</span></span>
+        </li>
+        <li>
+          <span class="promise-icon" aria-hidden="true"><svg width="20" height="20" class="icon"><use href="#i-activity"></use></svg></span>
+          <span><strong>Track it any time</strong><span>Look your claim up with its ID</span></span>
+        </li>
+      </ul>
+    </div>
+
+    {# A drawing: a claim being approved and paid. Decoration only. #}
+    <div class="hero-art" aria-hidden="true">
+      <svg viewBox="0 0 440 360" width="440" height="360" focusable="false">
+        <defs>
+          <radialGradient id="art-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0" stop-color="#ffb24d" stop-opacity="0.45"/>
+            <stop offset="1" stop-color="#ffb24d" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="art-gold" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#ffd98a"/>
+            <stop offset="0.55" stop-color="#e3a028"/>
+            <stop offset="1" stop-color="#b8760a"/>
+          </linearGradient>
+          <linearGradient id="art-coin-side" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#9a6206"/>
+            <stop offset="0.5" stop-color="#c9881a"/>
+            <stop offset="1" stop-color="#8a5703"/>
+          </linearGradient>
+          <linearGradient id="art-paper" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="1" stop-color="#e8ecf6"/>
+          </linearGradient>
+          <filter id="art-shadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#000000" flood-opacity="0.38"/>
+          </filter>
+        </defs>
+
+        <circle cx="236" cy="176" r="168" fill="url(#art-glow)"/>
+        <circle cx="236" cy="176" r="128" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-dasharray="3 7"/>
+
+        {# The card behind: a second claim. #}
+        <g transform="rotate(-9 190 190)" opacity="0.55">
+          <rect x="98" y="78" width="196" height="238" rx="10" fill="#ffffff" fill-opacity="0.16" stroke="#ffffff" stroke-opacity="0.35"/>
+        </g>
+
+        {# The claim. #}
+        <g class="art-card" filter="url(#art-shadow)">
+          <rect x="128" y="52" width="208" height="262" rx="10" fill="url(#art-paper)"/>
+          <rect x="150" y="76" width="38" height="38" rx="7" fill="#1b2350"/>
+          <text x="169" y="101" text-anchor="middle" font-size="15" font-weight="800" fill="#e3a028" font-family="system-ui, sans-serif">ai</text>
+          <rect x="200" y="80" width="104" height="10" rx="3" fill="#1b2350" fill-opacity="0.88"/>
+          <rect x="200" y="98" width="66" height="8" rx="3" fill="#98a2b3"/>
+          <rect x="150" y="134" width="164" height="7" rx="3" fill="#d0d5dd"/>
+          <rect x="150" y="151" width="146" height="7" rx="3" fill="#d0d5dd"/>
+          <rect x="150" y="168" width="124" height="7" rx="3" fill="#d0d5dd"/>
+          <rect x="150" y="194" width="164" height="58" rx="7" fill="#fdf4e3" stroke="#efd6a4"/>
+          <text x="164" y="215" font-size="10" font-weight="800" letter-spacing="1.4" fill="#8f5a00" font-family="system-ui, sans-serif">APPROVED</text>
+          <text x="164" y="240" font-size="21" font-weight="850" fill="#1b2350" font-family="system-ui, sans-serif">700.00</text>
+          <rect x="150" y="266" width="164" height="28" rx="6" fill="#1b2350"/>
+          <text x="232" y="285" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff" font-family="system-ui, sans-serif">Paid to your bank</text>
+        </g>
+
+        {# The coins. #}
+        <g class="art-coins" filter="url(#art-shadow)">
+          <rect x="52" y="268" width="84" height="14" fill="url(#art-coin-side)"/>
+          <ellipse cx="94" cy="282" rx="42" ry="12" fill="#8a5703"/>
+          <ellipse cx="94" cy="268" rx="42" ry="12" fill="url(#art-gold)"/>
+          <rect x="58" y="248" width="84" height="14" fill="url(#art-coin-side)"/>
+          <ellipse cx="100" cy="262" rx="42" ry="12" fill="#8a5703"/>
+          <ellipse cx="100" cy="248" rx="42" ry="12" fill="url(#art-gold)"/>
+          <rect x="50" y="228" width="84" height="14" fill="url(#art-coin-side)"/>
+          <ellipse cx="92" cy="242" rx="42" ry="12" fill="#8a5703"/>
+          <ellipse cx="92" cy="228" rx="42" ry="12" fill="url(#art-gold)"/>
+          <ellipse cx="92" cy="228" rx="28" ry="7" fill="none" stroke="#fff3cf" stroke-opacity="0.7" stroke-width="2"/>
+        </g>
+
+        {# The shield with its tick. #}
+        <g class="art-shield" filter="url(#art-shadow)">
+          <path d="M338 132 l46 17 v38 c0 32 -22 53 -46 64 c-24 -11 -46 -32 -46 -64 v-38 z" fill="url(#art-gold)"/>
+          <path d="M338 146 l32 12 v27 c0 23 -15 38 -32 46 c-17 -8 -32 -23 -32 -46 v-27 z" fill="#ffffff" fill-opacity="0.18"/>
+          <path d="M320 190 l13 13 l25 -27" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+
+        {# The note "Claim decided". #}
+        <g class="art-note" filter="url(#art-shadow)">
+          <rect x="300" y="268" width="128" height="44" rx="8" fill="#ffffff"/>
+          <circle cx="322" cy="290" r="11" fill="#17b26a"/>
+          <path d="M316 290 l4 4 l8 -8" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="340" y="287" font-size="11" font-weight="800" fill="#101828" font-family="system-ui, sans-serif">Claim decided</text>
+          <text x="340" y="301" font-size="9.5" font-weight="600" fill="#667085" font-family="system-ui, sans-serif">while you waited</text>
+        </g>
+
+        {# Sparkles. #}
+        <g fill="#ffd98a">
+          <path class="art-twinkle" d="M96 92 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z"/>
+          <path class="art-twinkle art-twinkle-2" d="M392 76 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3 z"/>
+          <path class="art-twinkle art-twinkle-3" d="M60 182 l2.5 6 l6 2.5 l-6 2.5 l-2.5 6 l-2.5 -6 l-6 -2.5 l6 -2.5 z"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<div class="container overlap">
+  <div class="layout">
+    <section class="card form-card" aria-labelledby="form-title">
+      <div class="card-head">
+        <div>
+          <h2 id="form-title" class="card-title">Your claim</h2>
+          <p class="card-sub">Every field is needed. It takes about a minute.</p>
+        </div>
+        <span class="secure-tag"><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-check-circle"></use></svg>Checked as you go</span>
+      </div>
+
+      {# How far along the form is. Shown and kept up to date by the script. #}
+      <div class="form-progress" data-progress hidden>
+        <p class="progress-text" role="status"><strong data-progress-count>0</strong> of 3 sections complete</p>
+        <div class="progress-track" aria-hidden="true"><span class="progress-fill" data-progress-fill></span></div>
+      </div>
+
+      {# Empty unless the claim could not be sent; hidden while empty. #}
+      <p id="form-message" class="alert alert-danger" role="alert">{{ form_message }}</p>
+
+      {# novalidate: the page's script checks the rules of main.py, not the browser's own checks. #}
+      <form id="claim-form" method="post" action="/claims" novalidate>
+        <fieldset class="form-section" data-section>
+          {{ section_head(1, "Who you are", "Your customer ID and the policy you claim on") }}
+          <div class="grid-2">
+            {% call field("customer_id", "Customer ID", "Starts with C-, for example C-1001.", errors.customer_id, "user") %}
+              <input id="customer_id" name="customer_id" type="text" value="{{ values.customer_id }}"
+                     placeholder="C-1001" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                     aria-describedby="customer_id-hint customer_id-error"
+                     {% if errors.customer_id %}aria-invalid="true"{% endif %}
+                     {% if first_error == "customer_id" %}autofocus{% endif %}
+                     {{ rule_attributes(claim_rules.customer_id) }}>
+            {% endcall %}
+            {% call field("policy_id", "Policy ID", "Starts with P-, for example P-2001.", errors.policy_id, "file") %}
+              <input id="policy_id" name="policy_id" type="text" value="{{ values.policy_id }}"
+                     placeholder="P-2001" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                     aria-describedby="policy_id-hint policy_id-error"
+                     {% if errors.policy_id %}aria-invalid="true"{% endif %}
+                     {% if first_error == "policy_id" %}autofocus{% endif %}
+                     {{ rule_attributes(claim_rules.policy_id) }}>
+            {% endcall %}
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section" data-section>
+          {{ section_head(2, "What happened", "When it happened, and in your own words") }}
+          <div class="grid-2">
+            {% call field("incident_date", "Date of the incident", "The day of the damage or loss.", errors.incident_date, "calendar") %}
+              <input id="incident_date" name="incident_date" type="date" value="{{ values.incident_date }}"
+                     max="{{ today }}"
+                     aria-describedby="incident_date-hint incident_date-error"
+                     {% if errors.incident_date %}aria-invalid="true"{% endif %}
+                     {% if first_error == "incident_date" %}autofocus{% endif %}
+                     {{ rule_attributes(claim_rules.incident_date) }}>
+            {% endcall %}
+          </div>
+          {% call field("description", "What happened", "10 to 1000 characters.", errors.description) %}
+            <textarea id="description" name="description" rows="5" maxlength="1000"
+                      placeholder="For example: a car reversed into my parked car and damaged the rear bumper."
+                      aria-describedby="description-hint description-error"
+                      {% if errors.description %}aria-invalid="true"{% endif %}
+                      {% if first_error == "description" %}autofocus{% endif %}
+                      {{ rule_attributes(claim_rules.description) }}>{{ values.description }}</textarea>
+          {% endcall %}
+        </fieldset>
+
+        <fieldset class="form-section" data-section>
+          {{ section_head(3, "The amount", "What you are asking us to pay") }}
+          <div class="grid-2">
+            {% call field("amount_claimed", "Amount claimed", "More than 0, at most 1000000, up to two decimals.", errors.amount_claimed, "banknote") %}
+              {# A text field, never type="number", which changes its value when the page scrolls over it. #}
+              <input id="amount_claimed" name="amount_claimed" type="text" inputmode="decimal"
+                     value="{{ values.amount_claimed }}" placeholder="1200.00" autocomplete="off"
+                     class="amount-input"
+                     aria-describedby="amount_claimed-hint amount_claimed-error"
+                     {% if errors.amount_claimed %}aria-invalid="true"{% endif %}
+                     {% if first_error == "amount_claimed" %}autofocus{% endif %}
+                     {{ rule_attributes(claim_rules.amount_claimed) }}>
+            {% endcall %}
+          </div>
+        </fieldset>
+
+        <div class="form-foot">
+          <p class="foot-note">
+            <svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-info"></use></svg>
+            Your claim is checked and decided as soon as you submit it. You will see the decision on the next page.
+          </p>
+          <button type="submit" class="button button-primary button-large" data-busy-label="Deciding your claim…">
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="button-label">Submit claim</span>
+            <svg width="20" height="20" class="icon button-arrow" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+          </button>
+        </div>
+
+        {# While the claim is decided: what is happening, in the order claims-api does it.
+           The highlight moves through the steps to show activity; it does not claim
+           that a step is finished. Shown by the script after a valid submit. #}
+        <div class="decision" data-decision hidden>
+          <div class="decision-head">
+            <span class="decision-spinner" aria-hidden="true"></span>
+            <div>
+              <p class="decision-title" role="status">Deciding your claim…</p>
+              <p class="decision-sub">This usually takes a few seconds. Please keep this page open.</p>
+            </div>
+          </div>
+          <ol class="decision-steps">
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-user"></use></svg>Checking your customer account</li>
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-file"></use></svg>Checking your policy and the amount</li>
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>Deciding the claim</li>
+            <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-landmark"></use></svg>Paying approved claims to your bank</li>
+          </ol>
+        </div>
+      </form>
+    </section>
+
+    <aside class="side">
+      {# Your claim as you type it. Shown by the script, on wide screens. #}
+      <section class="card side-card summary-card" data-summary hidden aria-labelledby="summary-title">
+        <div class="side-head">
+          <span class="side-icon" aria-hidden="true"><svg width="20" height="20" class="icon"><use href="#i-receipt"></use></svg></span>
+          <div>
+            <h2 id="summary-title" class="card-title">Your claim so far</h2>
+            <p class="card-sub">Updates as you type.</p>
+          </div>
+        </div>
+        <dl class="summary-list">
+          <div class="summary-row" data-summary-for="customer_id"><dt>Customer</dt><dd>Not entered yet</dd></div>
+          <div class="summary-row" data-summary-for="policy_id"><dt>Policy</dt><dd>Not entered yet</dd></div>
+          <div class="summary-row" data-summary-for="incident_date"><dt>Date</dt><dd>Not entered yet</dd></div>
+          <div class="summary-row" data-summary-for="description"><dt>What happened</dt><dd>Not entered yet</dd></div>
+          <div class="summary-row summary-total" data-summary-for="amount_claimed"><dt>Amount claimed</dt><dd>Not entered yet</dd></div>
+        </dl>
+      </section>
+
+      <section class="card side-card" id="track" aria-labelledby="track-title">
+        <div class="side-head">
+          <span class="side-icon" aria-hidden="true"><svg width="20" height="20" class="icon"><use href="#i-search"></use></svg></span>
+          <div>
+            <h2 id="track-title" class="card-title">Track a claim</h2>
+            <p class="card-sub">See the status of a claim you made.</p>
+          </div>
+        </div>
+        <form id="lookup-form" method="get" action="/claims" novalidate>
+          {% call field("claim_id", "Claim ID", "On your status page, for example CLM-100001.", lookup_error, "hash") %}
+            <input id="claim_id" name="claim_id" type="text" value="{{ lookup_value }}"
+                   placeholder="CLM-100001" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                   aria-describedby="claim_id-hint claim_id-error"
+                   {% if lookup_error %}aria-invalid="true" autofocus{% endif %}
+                   {{ rule_attributes(lookup_rule) }}>
+          {% endcall %}
+          <button type="submit" class="button button-secondary button-block">
+            <span class="button-label">Track claim</span>
+            <svg width="20" height="20" class="icon button-arrow" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+          </button>
+        </form>
+
+        {# The claims made in this browser, newest first. Filled by the script. #}
+        <div class="recent" data-recent hidden>
+          <p class="recent-title"><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-history"></use></svg>Recent claims in this browser</p>
+          <ul class="recent-list" data-recent-list></ul>
+        </div>
+      </section>
+
+      <section class="card side-card" aria-labelledby="know-title">
+        <h2 id="know-title" class="card-title">Good to know</h2>
+        <ul class="check-list">
+          <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-check"></use></svg>Have your customer ID and policy ID ready.</li>
+          <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-check"></use></svg>The incident must fall within your policy's period.</li>
+          <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-check"></use></svg>If the amount to pay is above 5000, a claims handler reviews your claim.</li>
+          <li><svg width="20" height="20" class="icon" aria-hidden="true"><use href="#i-check"></use></svg>Approved claims are paid straight to your bank account.</li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

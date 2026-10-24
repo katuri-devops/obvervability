@@ -220,6 +220,35 @@ services:
     networks:
       - claims-net
  
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: frontend
+      CLAIMS_API_URL: http://traefik:8000/claims-api
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend.priority=1
+      - traefik.http.routers.frontend.entrypoints=web
+      - traefik.http.services.frontend.loadbalancer.server.port=8000
+      - traefik.http.services.frontend.loadbalancer.healthcheck.path=/health
+      - traefik.http.services.frontend.loadbalancer.healthcheck.interval=5s
+    networks:
+      - claims-net
 
 networks:
   # Created once by hand and shared by all four setups.

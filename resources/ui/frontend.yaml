@@ -1,0 +1,230 @@
+openapi: 3.1.0
+info:
+  title: frontend
+  version: 1.0.0
+  description: |
+    The web pages of the claims system: a customer submits a claim, and sees
+    its status. The frontend has no database. It sends each claim to
+    claims-api and shows claims-api's answer, at the address in the
+    environment variable CLAIMS_API_URL.
+
+    It is served at the root of http://localhost:8080, through Traefik's
+    door "web". Every other address prefix belongs to a service, such as
+    /claims-api, so Traefik sends only what is left to the frontend.
+
+    Fixed for every student, because checks and load tests rely on them:
+    the addresses, the HTTP statuses, the form field names, the element ids
+    and the texts below. The look of the pages is not part of this
+    contract: the frontend is given ready-made, and a frontend built to
+    this contract may look different. Besides the addresses below, the
+    frontend serves its CSS, its script and its images under /static/, and
+    its icon at /favicon.ico.
+
+    The rules of the claim form. The browser and the frontend check the
+    same rules, written once in the frontend's code and given to the page's
+    script through data-* attributes. Each rule has one message, shown
+    beside its field:
+    - customer_id: the letter C, a dash and four digits.
+      "Enter your customer ID: the letter C, a dash and four digits, for example C-1001."
+    - policy_id: the letter P, a dash and four digits.
+      "Enter the policy ID: the letter P, a dash and four digits, for example P-2001."
+    - incident_date: a date in the form YYYY-MM-DD, not after today in UTC.
+      "Enter the date of the incident. It cannot be in the future."
+    - description: 10 to 1000 characters.
+      "Describe what happened in 10 to 1000 characters."
+    - amount_claimed: digits with at most one decimal point and at most two
+      decimals; more than 0 and at most 1000000.
+      "Enter the amount claimed: more than 0 and at most 1000000, with at most two decimals."
+    The look-up form has one field:
+    - claim_id: CLM, a dash and at least six digits.
+      "Enter a claim ID: CLM, a dash and at least six digits, for example CLM-100001."
+
+    In the browser, before anything is sent:
+    - amount_claimed is a text field with inputmode="decimal", not
+      type="number". Characters that are not digits or the first decimal
+      point are blocked as they are typed; pasted or dropped text is filtered
+      the same way; a third decimal, or a value above 1000000, is refused as
+      it is typed.
+    - incident_date is a date field with max set to today's date in UTC.
+    - description has maxlength 1000.
+    - Submitting checks every field. If any is wrong, nothing is sent, every
+      error appears beside its field, and the focus moves to the first wrong
+      field. The submit button stays enabled. An error disappears as soon as
+      its field is corrected.
+
+    Element ids. On the claim page: the form claim-form; the fields
+    customer_id, policy_id, incident_date, description and amount_claimed;
+    beside each field an element <field>-error, empty when there is no
+    error; and form-message, above the form, empty unless the claim could not
+    be sent. The look-up form lookup-form has the field claim_id and the
+    element claim_id-error. On the status page: claim-id, holding the claim's
+    ID, and claim-status, with the attribute data-status set to the claim's
+    status.
+
+    Texts on the status page. The status, in claim-status:
+    - PAID: "Paid". Then: "We have sent {approved_amount} to your bank account."
+    - UNDER_REVIEW: "Under review". Then: "A claims handler will review your
+      claim, because the amount to pay is above 5000."
+    - REJECTED: "Rejected". Then the reason:
+      CUSTOMER_NOT_ACTIVE "Your customer account is not active.";
+      POLICY_NOT_ACTIVE "The policy is not active.";
+      INCIDENT_OUTSIDE_POLICY_PERIOD "The incident date is outside the period the policy covers.";
+      BELOW_DEDUCTIBLE "The amount claimed is not more than the policy's deductible."
+    - PAYMENT_FAILED: "Payment failed". Then: "Your claim is approved, but
+      the payment could not be made. We will contact you."
+    - APPROVED: "Approved". Then: "The payment is on its way."
+    Money is shown with two decimals, for example 700.00.
+
+servers:
+  - url: http://localhost:8080
+    description: From your browser
+  - url: http://traefik:80
+    description: From a container on claims-net, through Traefik's door "web"
+
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          $ref: '../../api/common/common.yaml#/components/responses/Health'
+
+  /:
+    get:
+      operationId: claimPage
+      description: >
+        The claim page: the claim form, empty, with incident_date's max set to
+        today, and below it the look-up form.
+      responses:
+        '200':
+          $ref: '#/components/responses/Page'
+
+  /claims:
+    post:
+      operationId: submitClaim
+      description: |
+        The claim form is sent here. The steps, in this order:
+        1. Check the five fields with the rules above. If any is wrong:
+           answer 422 with the claim page, the values as typed, and each
+           field's message beside it. Nothing is sent to claims-api.
+        2. Send the claim to claims-api: POST {CLAIMS_API_URL}/claims, with
+           the five fields as JSON, amount_claimed as a number. Wait at most
+           30 seconds, because claims-api itself may wait for the bank.
+        3. claims-api answers 201: answer 303, with Location
+           /claims/{claim_id}, so the browser shows the status page.
+        4. claims-api answers 422, naming one or more of the five fields:
+           answer 422 with the claim page, the values as typed, and
+           claims-api's message for each field it names, beside that field.
+        5. Anything else, no answer within 30 seconds, or claims-api cannot
+           be reached: answer 503 with the claim page, the values as typed,
+           and in form-message: "Your claim could not be sent. Nothing was
+           saved. Please try again in a moment." This includes Traefik's own
+           plain-text "404 page not found", which means that no copy of
+           claims-api is running.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClaimForm'
+      responses:
+        '303':
+          $ref: '#/components/responses/ToStatusPage'
+        '422':
+          $ref: '#/components/responses/Page'
+        '503':
+          $ref: '#/components/responses/Page'
+    get:
+      operationId: lookUpClaim
+      description: >
+        The look-up form is sent here. If claim_id matches its rule, answer
+        303 with Location /claims/{claim_id}. Otherwise, answer 422 with the
+        claim page, the value as typed, and the rule's message in
+        claim_id-error.
+      parameters:
+        - name: claim_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '303':
+          $ref: '#/components/responses/ToStatusPage'
+        '422':
+          $ref: '#/components/responses/Page'
+
+  /claims/{claim_id}:
+    get:
+      operationId: statusPage
+      description: |
+        The status page of one claim, from claims-api: GET
+        {CLAIMS_API_URL}/claims/{claim_id}, waiting at most 5 seconds. It
+        shows the claim's ID, its status and the text for it, the policy,
+        the incident date, the description, the amount claimed and, when
+        there is one, the approved amount; and a link back to /.
+        - claims-api answers 200: answer 200 with the status page.
+        - claim_id does not match its rule, or claims-api answers 404 with
+          the error answer NOT_FOUND: answer 404 with a page that says
+          "There is no claim with this ID." and links back to /.
+        - Anything else, no answer, or claims-api cannot be reached: answer
+          503 with a page that says "The claim cannot be shown right now.
+          Please try again in a moment." This includes Traefik's own
+          "404 page not found".
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Page'
+        '404':
+          $ref: '#/components/responses/Page'
+        '503':
+          $ref: '#/components/responses/Page'
+
+components:
+  responses:
+    Page:
+      description: >
+        A complete HTML page. Every page has a title bar with "Claims" and a
+        link to /. Errors and other pages use the same layout. An unknown
+        address answers 404, and a wrong HTTP method 405, each with a page in
+        the same layout.
+      content:
+        text/html:
+          schema:
+            type: string
+    ToStatusPage:
+      description: Go to the claim's status page.
+      headers:
+        Location:
+          description: /claims/{claim_id}
+          schema:
+            type: string
+
+  schemas:
+    ClaimForm:
+      type: object
+      description: >
+        The claim form, as the browser sends it. Every value is text; the
+        rules above apply. Unknown fields are ignored.
+      required: [customer_id, policy_id, incident_date, description, amount_claimed]
+      properties:
+        customer_id:
+          type: string
+          examples: [C-1001]
+        policy_id:
+          type: string
+          examples: [P-2001]
+        incident_date:
+          type: string
+          examples: ['2026-10-17']
+        description:
+          type: string
+          examples: [Rear bumper damaged in a car park.]
+        amount_claimed:
+          type: string
+          examples: ['1200.00']
+ 
