@@ -141,6 +141,7 @@ services:
       CUSTOMER_SERVICE_URL: http://traefik:8000/customer-service
       POLICY_SERVICE_URL: http://traefik:8000/policy-service
       PAYMENT_SERVICE_URL: http://traefik:8000/payment-service
+      RABBITMQ_URL: amqp://claims:claims-dev-password@rabbitmq:5672/%2F
     deploy:
       replicas: 2
       resources:

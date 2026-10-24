@@ -1,0 +1,172 @@
+asyncapi: 3.0.0
+info:
+  title: claim-decided
+  version: 1.0.0
+  description: |
+    The message claims-api sends through RabbitMQ when it has decided a claim.
+    notification-service receives it later and records an email to the
+    customer. The message does not ask anything back: claims-api sends it and
+    moves on, so an email can be a few seconds late without slowing the claim.
+
+    Where the messages go. Both claims-api and notification-service declare
+    all four of these at start-up, with exactly these settings, in virtual
+    host "/":
+    - the exchange "claims": type topic, durable.
+    - the queue "notifications.claim-decided": durable, classic, with the
+      argument x-dead-letter-exchange set to "claims.dead-letter". It is bound
+      to the exchange "claims" with the routing key "claim.decided".
+    - the exchange "claims.dead-letter": type fanout, durable.
+    - the queue "notifications.claim-decided.dead-letter": durable, classic,
+      bound to the exchange "claims.dead-letter" with an empty routing key.
+      A message that notification-service rejects lands here, instead of
+      coming back again and again.
+
+    Because the queue exists as soon as claims-api has started, messages wait
+    in it while notification-service is not running.
+
+    How a message is sent: published to the exchange "claims" with the
+    routing key "claim.decided"; the body is JSON; content_type
+    "application/json"; delivery_mode 2 (persistent, kept when RabbitMQ
+    restarts); message_id a new UUID for every message; type "claim.decided".
+    Message headers are reserved for the trace context, added later in the
+    course.
+
+servers:
+  rabbitmq:
+    host: rabbitmq:5672
+    protocol: amqp
+    description: RabbitMQ on the network claims-net, virtual host "/".
+
+channels:
+  claimsExchange:
+    address: claims
+    description: The exchange claims-api publishes to.
+    messages:
+      claimDecided:
+        $ref: '#/components/messages/ClaimDecided'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: claims
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /
+        bindingVersion: 0.3.0
+  notificationsQueue:
+    address: notifications.claim-decided
+    description: >
+      The queue notification-service reads, bound to the exchange "claims"
+      with the routing key "claim.decided". Its argument
+      x-dead-letter-exchange is "claims.dead-letter".
+    messages:
+      claimDecided:
+        $ref: '#/components/messages/ClaimDecided'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: notifications.claim-decided
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: /
+        bindingVersion: 0.3.0
+
+operations:
+  sendClaimDecided:
+    action: send
+    channel:
+      $ref: '#/channels/claimsExchange'
+    summary: claims-api sends one message for each claim it has decided.
+    description: |
+      When claims-api sends it, as claims-api.yaml describes: once per saved
+      claim, after the claim's final status is saved, and before claims-api
+      answers. The status is never APPROVED: a claim is sent only when it is
+      REJECTED, UNDER_REVIEW, PAID or PAYMENT_FAILED. A request that is
+      refused (422) or fails (503) saves no claim, and sends no message.
+    messages:
+      - $ref: '#/channels/claimsExchange/messages/claimDecided'
+    bindings:
+      amqp:
+        cc: [claim.decided]
+        deliveryMode: 2
+        mandatory: false
+        bindingVersion: 0.3.0
+  receiveClaimDecided:
+    action: receive
+    channel:
+      $ref: '#/channels/notificationsQueue'
+    summary: notification-service receives each message, as notification-api.yaml describes.
+    messages:
+      - $ref: '#/channels/notificationsQueue/messages/claimDecided'
+
+components:
+  messages:
+    ClaimDecided:
+      name: claim.decided
+      title: A claim has been decided
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ClaimDecided'
+      examples:
+        - name: paid
+          payload:
+            claim_id: CLM-100001
+            customer_id: C-1001
+            policy_id: P-2001
+            status: PAID
+            reason: null
+            approved_amount: 700.0
+            payment_id: PAY-100011
+            decided_at: '2026-10-18T17:07:38.031715Z'
+        - name: rejected
+          payload:
+            claim_id: CLM-100003
+            customer_id: C-1009
+            policy_id: P-2013
+            status: REJECTED
+            reason: CUSTOMER_NOT_ACTIVE
+            approved_amount: null
+            payment_id: null
+            decided_at: '2026-10-18T17:07:38.965167Z'
+
+  schemas:
+    ClaimDecided:
+      type: object
+      additionalProperties: false
+      required: [claim_id, customer_id, policy_id, status, reason, approved_amount,
+                 payment_id, decided_at]
+      properties:
+        claim_id:
+          type: string
+          pattern: '^CLM-[0-9]{6,}$'
+        customer_id:
+          type: string
+          pattern: '^C-[0-9]{4}$'
+        policy_id:
+          type: string
+          pattern: '^P-[0-9]{4}$'
+        status:
+          type: string
+          description: The claim's final status, as saved. Never APPROVED.
+          enum: [REJECTED, UNDER_REVIEW, PAID, PAYMENT_FAILED]
+        reason:
+          type: [string, 'null']
+          description: The claim's reason, as saved; null for PAID.
+          enum: [CUSTOMER_NOT_ACTIVE, POLICY_NOT_ACTIVE, INCIDENT_OUTSIDE_POLICY_PERIOD,
+                 BELOW_DEDUCTIBLE, ABOVE_REVIEW_LIMIT, PAYMENT_ERROR, null]
+        approved_amount:
+          type: [number, 'null']
+          minimum: 0
+          description: As saved, as a JSON number; null for REJECTED.
+        payment_id:
+          type: [string, 'null']
+          pattern: '^PAY-[0-9]{6,}$'
+          description: As saved; null when there was no payment.
+        decided_at:
+          type: string
+          format: date-time
+          description: The claim's updated_at, in UTC.
+ 

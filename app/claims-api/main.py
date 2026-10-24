@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import socket
@@ -6,8 +7,11 @@ from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated, Literal
+from uuid import uuid4
 
+import aio_pika
 import httpx
+from aio_pika import DeliveryMode, ExchangeType, Message
 from fastapi import FastAPI, Path, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import (
@@ -49,6 +53,9 @@ POLICY_SERVICE_URL = os.getenv(
 PAYMENT_SERVICE_URL = os.getenv(
     "PAYMENT_SERVICE_URL", "http://traefik:8000/payment-service"
 ).rstrip("/")
+RABBITMQ_URL = os.getenv(
+    "RABBITMQ_URL", "amqp://claims:claims-dev-password@rabbitmq:5672/%2F"
+)
 engine = create_async_engine(DATABASE_URL)
 
 CLAIM_ID_PATTERN = r"^CLM-[0-9]{6,}$"
@@ -93,16 +100,73 @@ async def retry_database_connection():
             await asyncio.sleep(2)
 
 
+async def connect_rabbitmq(app: FastAPI):
+    while True:
+        connection = None
+        try:
+            connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            channel = await connection.channel(publisher_confirms=True)
+            claims_exchange = await channel.declare_exchange(
+                "claims",
+                ExchangeType.TOPIC,
+                durable=True,
+                auto_delete=False,
+            )
+            dead_letter_exchange = await channel.declare_exchange(
+                "claims.dead-letter",
+                ExchangeType.FANOUT,
+                durable=True,
+                auto_delete=False,
+            )
+            notifications_queue = await channel.declare_queue(
+                "notifications.claim-decided",
+                durable=True,
+                exclusive=False,
+                auto_delete=False,
+                arguments={
+                    "x-queue-type": "classic",
+                    "x-dead-letter-exchange": "claims.dead-letter",
+                },
+            )
+            dead_letter_queue = await channel.declare_queue(
+                "notifications.claim-decided.dead-letter",
+                durable=True,
+                exclusive=False,
+                auto_delete=False,
+                arguments={"x-queue-type": "classic"},
+            )
+            await notifications_queue.bind(claims_exchange, routing_key="claim.decided")
+            await dead_letter_queue.bind(dead_letter_exchange, routing_key="")
+            app.state.rabbit_connection = connection
+            app.state.claims_exchange = claims_exchange
+            logger.info("RabbitMQ connection is ready")
+            return
+        except Exception:
+            if connection is not None:
+                with suppress(Exception):
+                    await connection.close()
+            logger.warning("RabbitMQ is not ready; retrying in 2 seconds")
+            await asyncio.sleep(2)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.http_client = httpx.AsyncClient()
     retry_task = asyncio.create_task(retry_database_connection())
+    app.state.rabbit_connection = None
+    app.state.claims_exchange = None
+    rabbit_task = asyncio.create_task(connect_rabbitmq(app))
     try:
         yield
     finally:
         retry_task.cancel()
+        rabbit_task.cancel()
         with suppress(asyncio.CancelledError):
             await retry_task
+        with suppress(asyncio.CancelledError):
+            await rabbit_task
+        if app.state.rabbit_connection is not None:
+            await app.state.rabbit_connection.close()
         await app.state.http_client.aclose()
         await engine.dispose()
 
@@ -470,6 +534,42 @@ def claim_response(row):
     }
 
 
+async def publish_claim_decided(row):
+    exchange = app.state.claims_exchange
+    if exchange is None:
+        logger.warning(
+            "RabbitMQ is unavailable; claim-decided message was not sent",
+            extra={"claim_id": row["claim_id"]},
+        )
+        return
+
+    payload = {
+        "claim_id": row["claim_id"],
+        "customer_id": row["customer_id"],
+        "policy_id": row["policy_id"],
+        "status": row["status"],
+        "reason": row["reason"],
+        "approved_amount": money_number(row["approved_amount"]),
+        "payment_id": row["payment_id"],
+        "decided_at": utc_timestamp(row["updated_at"]),
+    }
+    message = Message(
+        body=json.dumps(payload).encode("utf-8"),
+        content_type="application/json",
+        delivery_mode=DeliveryMode.PERSISTENT,
+        message_id=str(uuid4()),
+        type="claim.decided",
+    )
+    try:
+        async with asyncio.timeout(2):
+            await exchange.publish(message, routing_key="claim.decided")
+    except Exception:
+        logger.warning(
+            "RabbitMQ did not confirm claim-decided message",
+            extra={"claim_id": row["claim_id"]},
+        )
+
+
 async def save_claim(request: ClaimRequest, status: str, reason: str | None,
                      approved_amount: Decimal | None):
     query = text(
@@ -620,6 +720,7 @@ async def submit_claim(request: ClaimRequest):
             "payment_id": row["payment_id"],
         },
     )
+    await publish_claim_decided(row)
     return claim_response(row)
 
 

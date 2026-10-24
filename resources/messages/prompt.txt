@@ -1,0 +1,32 @@
+=== 13b-1 · claim-decided · Send the message from claims-api ===
+
+Read these files in this project again: PROJECT_RULES.md,
+contracts/api/claims-api/claims-api.yaml and
+contracts/messages/claim-decided/claim-decided.yaml.
+
+Make claims-api send the message claim.decided, exactly as the paragraph
+"The message claim.decided" of POST /claims in claims-api.yaml and the
+contract claim-decided.yaml describe, following PROJECT_RULES.md
+section 15.
+
+1. Add aio-pika to app/claims-api/requirements.txt, at the version in
+   PROJECT_RULES.md section 5.
+2. Add the variable RABBITMQ_URL from section 8 to the claims-api entry
+   in app/compose.yaml. Change nothing else in that file.
+3. At start-up, in the background, connect with connect_robust, open one
+   channel with publisher confirms, and declare the two exchanges, the
+   two queues and their bindings exactly as claim-decided.yaml
+   describes, including the argument x-dead-letter-exchange.
+4. After the claim's final status is saved, and before answering, publish
+   one message: JSON with exactly the eight fields of the contract, to
+   the exchange claims with the routing key claim.decided, with
+   content_type application/json, persistent delivery, a new UUID as
+   message_id, and type claim.decided. Add no headers.
+5. Wait at most 2 seconds for RabbitMQ to confirm. If RabbitMQ is not
+   available, or does not confirm in time, log a WARNING and answer
+   anyway. RabbitMQ is never a reason to answer 503.
+6. A request that saves no claim sends no message. Keep everything else
+   as it is: the steps, the answers and the error answers.
+
+When you are done, tell me the command that builds and starts the
+service, and how to see the messages. Then stop.
