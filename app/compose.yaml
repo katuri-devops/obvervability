@@ -165,6 +165,39 @@ services:
     networks:
       - claims-net
 
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: notification-service
+      DATABASE_URL: postgresql+psycopg://claims:claims-dev-password@postgres:5432/claims?application_name=notification-service
+      RABBITMQ_URL: amqp://claims:claims-dev-password@rabbitmq:5672/%2F
+      CUSTOMER_SERVICE_URL: http://traefik:8000/customer-service
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.notification-service.rule=PathPrefix(`/notification-service`)
+      - traefik.http.routers.notification-service.entrypoints=web,internal
+      - traefik.http.routers.notification-service.middlewares=notification-service-strip
+      - traefik.http.middlewares.notification-service-strip.stripprefix.prefixes=/notification-service
+      - traefik.http.services.notification-service.loadbalancer.server.port=8000
+      - traefik.http.services.notification-service.loadbalancer.healthcheck.path=/health
+      - traefik.http.services.notification-service.loadbalancer.healthcheck.interval=5s
+    networks:
+      - claims-net
+
   # The bank, given ready-made. It plays an outside provider: one copy,
   # called directly at http://bank-api:8000, not through Traefik.
   bank-api:

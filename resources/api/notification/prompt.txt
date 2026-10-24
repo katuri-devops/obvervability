@@ -1,0 +1,39 @@
+=== 13d-1 · notification-api · Build notification-service ===
+ 
+Read these files in this project: PROJECT_RULES.md,
+contracts/api/common/common.yaml,
+contracts/api/customer-api/customer-api.yaml,
+contracts/messages/claim-decided/claim-decided.yaml and
+contracts/api/notification-api/notification-api.yaml.
+ 
+Build notification-service exactly as notification-api.yaml describes,
+following PROJECT_RULES.md, and section 15 in particular.
+ 
+1. Create the folder app/notification-service with a Dockerfile,
+   requirements.txt and main.py, as PROJECT_RULES.md sections 5 to 7
+   describe.
+2. Add notification-service to app/compose.yaml in the form
+   PROJECT_RULES.md section 7 shows, with notification-service in place of
+   customer-service everywhere, and with the variables RABBITMQ_URL and
+   CUSTOMER_SERVICE_URL from section 8. Do not change the other services
+   in that file.
+3. At start-up, in the background, connect to RabbitMQ with
+   connect_robust, declare the exchanges, queues and bindings exactly as
+   claim-decided.yaml lists them, and receive from the queue
+   notifications.claim-decided with prefetch_count 1. Acknowledge each
+   message yourself.
+4. Handle each message with the six steps of notification-api.yaml, in
+   that order: a message that cannot be read, or whose customer does not
+   exist, is rejected without requeue; a message that fails because
+   customer-service or the database is down is put back after 5 seconds;
+   a message delivered twice records one email.
+5. Write the subjects and bodies exactly as notification-api.yaml gives
+   them.
+6. GET /notifications answers as notification-api.yaml describes. Every
+   error answer uses the Error schema in common.yaml, never FastAPI's
+   {"detail": ...}.
+7. Use only the schema "notification". notification_id and created_at
+   come from the database. Never create or change tables.
+ 
+When you are done, tell me the command that builds and starts the
+service, and how to see it record the emails. Then stop.

@@ -1,0 +1,163 @@
+openapi: 3.1.0
+info:
+  title: notification-api
+  version: 1.0.0
+  description: |
+    The contract of notification-service. It receives the message
+    claim.decided (contracts/messages/claim-decided/claim-decided.yaml) from
+    the queue notifications.claim-decided, records an email to the customer
+    for each claim, and lets you read the recorded emails. The emails are
+    only recorded, in the table notification.notifications; nothing is sent.
+    notification-service owns the database schema "notification". It asks
+    customer-service for the customer's name and email address, through
+    Traefik, at the address in CUSTOMER_SERVICE_URL. Like every service, it
+    answers a wrong HTTP method with 405 and the code METHOD_NOT_ALLOWED.
+
+    Receiving. At start-up, in the background, notification-service connects
+    to RabbitMQ, declares the exchanges, queues and bindings exactly as
+    claim-decided.yaml lists them, and starts receiving from the queue
+    notifications.claim-decided. Each copy takes one message at a time
+    (prefetch 1), and acknowledges each message itself, only when its work
+    is done. The two copies share the queue: each message goes to one of
+    them.
+
+    For each message, in this order:
+    1. Read the body as claim-decided.yaml describes, and the property
+       message_id, which must be a UUID. If the message cannot be read, or
+       cannot become one of the emails below (for example PAID without an
+       approved_amount), it never will: reject it without putting it back,
+       so that RabbitMQ moves it to the queue
+       notifications.claim-decided.dead-letter. Log an error. Stop.
+    2. If the database already holds a notification whose event_id is this
+       message_id, the message was delivered twice: acknowledge it, and do
+       nothing else. Stop.
+    3. Ask customer-service: GET {CUSTOMER_SERVICE_URL}/customers/{customer_id}.
+       Wait at most 5 seconds.
+       - 200: use the customer's full_name and email.
+       - 404 with the error answer NOT_FOUND: the customer does not exist,
+         so the message never can be processed. Reject it without putting it
+         back (dead letter). Log an error. Stop.
+       - Anything else, no answer within 5 seconds, or customer-service
+         cannot be reached: wait 5 seconds, then put the message back in the
+         queue (reject with requeue). Log a warning. Stop.
+    4. Write the email, with the subject and body for the claim's status
+       given below.
+    5. Save the notification: event_id = message_id, the claim_id and
+       customer_id from the message, the email, subject and body, and the
+       status SENT. The database creates notification_id and created_at. If
+       the save fails because the database already holds this event_id,
+       saved by the other copy in the meantime, treat it as step 2. If the
+       database is not available, wait 5 seconds, then put the message back
+       (reject with requeue). Log a warning. Stop.
+    6. Acknowledge the message.
+    Any other, unexpected error while handling a message: reject it without
+    putting it back (dead letter), and log the error. Put back, it would
+    fail again and again.
+
+    The emails. {full_name} comes from customer-service; {claim_id},
+    {policy_id} and {approved_amount} from the message; money has two
+    decimals, for example 700.00. Every body has three paragraphs,
+    separated by an empty line: "Dear {full_name},", then the sentence for
+    the status below, then "Claims Service". In Python:
+    f"Dear {full_name},\n\n{sentence}\n\nClaims Service".
+    - PAID. Subject: "Your claim {claim_id} is paid". Sentence: "Your claim
+      {claim_id} on policy {policy_id} is approved. We have sent
+      {approved_amount} to your bank account."
+    - UNDER_REVIEW. Subject: "Your claim {claim_id} is under review".
+      Sentence: "A claims handler will review your claim {claim_id} on
+      policy {policy_id}, because the amount to pay is above 5000. We will
+      write to you again."
+    - REJECTED. Subject: "Your claim {claim_id} is rejected". Sentence:
+      "Your claim {claim_id} on policy {policy_id} is rejected. {reason}",
+      where {reason} is:
+      CUSTOMER_NOT_ACTIVE "Your customer account is not active.";
+      POLICY_NOT_ACTIVE "The policy is not active.";
+      INCIDENT_OUTSIDE_POLICY_PERIOD "The incident date is outside the period the policy covers.";
+      BELOW_DEDUCTIBLE "The amount claimed is not more than the policy's deductible."
+    - PAYMENT_FAILED. Subject: "Your claim {claim_id}: payment failed".
+      Sentence: "Your claim {claim_id} on policy {policy_id} is approved,
+      but the payment could not be made. We will contact you."
+
+servers:
+  - url: http://traefik:8000/notification-service
+    description: From another service, through Traefik
+  - url: http://localhost:8080/notification-service
+    description: From your browser
+
+paths:
+  /health:
+    get:
+      operationId: health
+      description: >
+        The shared health answer. Like every health answer, it never checks
+        the database, RabbitMQ or customer-service.
+      responses:
+        '200':
+          $ref: '../common/common.yaml#/components/responses/Health'
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      description: >
+        The notifications recorded for one claim, oldest first. A claim with
+        none, or a claim that does not exist, answers 200 with an empty list:
+        notification-service does not know which claims exist. If the
+        database is not available, 503 DEPENDENCY_UNAVAILABLE; any other
+        unexpected error, 500 INTERNAL_ERROR.
+      parameters:
+        - name: claim_id
+          in: query
+          required: true
+          schema:
+            $ref: '../common/common.yaml#/components/schemas/ClaimId'
+      responses:
+        '200':
+          description: The claim's notifications, possibly none.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+        '422':
+          $ref: '../common/common.yaml#/components/responses/ValidationFailed'
+        '500':
+          $ref: '../common/common.yaml#/components/responses/InternalError'
+        '503':
+          $ref: '../common/common.yaml#/components/responses/DependencyUnavailable'
+
+components:
+  schemas:
+    Notification:
+      type: object
+      additionalProperties: false
+      required: [notification_id, event_id, claim_id, customer_id, email, subject, body,
+                 status, created_at]
+      properties:
+        notification_id:
+          type: string
+          pattern: '^NTF-[0-9]{6,}$'
+          examples: [NTF-100001]
+        event_id:
+          type: string
+          format: uuid
+          description: The message_id of the message claim.decided this email came from.
+        claim_id:
+          $ref: '../common/common.yaml#/components/schemas/ClaimId'
+        customer_id:
+          $ref: '../common/common.yaml#/components/schemas/CustomerId'
+        email:
+          type: string
+          description: The customer's email address, from customer-service.
+          examples: [elena.markovic@example.com]
+        subject:
+          type: string
+        body:
+          type: string
+        status:
+          const: SENT
+        created_at:
+          type: string
+          format: date-time
+          description: When the notification was recorded, in UTC.
+ 
