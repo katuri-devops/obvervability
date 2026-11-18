@@ -5,3 +5,4 @@ sqlalchemy==2.0.54
 psycopg[binary]==3.3.6
 aio-pika==10.1.1
 pydantic==2.14.1
+splunk-opentelemetry==2.13.3

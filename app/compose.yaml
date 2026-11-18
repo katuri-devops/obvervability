@@ -1,6 +1,13 @@
 # The app setup. First version: only the load balancer.
 # The services are added to this file in the next steps.
 name: claims-app
+x-otel-env: &otel-env  
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317  
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc  
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment=claims-lab,service.version=1.0.0  
+  OTEL_PYTHON_EXCLUDED_URLS: health  
+  OTEL_PYTHON_LOG_CORRELATION: "true"  
+  OTEL_LOGS_EXPORTER: none
 
 services:
   traefik:

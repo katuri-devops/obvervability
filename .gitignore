@@ -20,3 +20,5 @@ htmlcov/
 .env.*
 !.env.example
 *.log
+*.azure-vm-deployment-guide.docx
+/output/
