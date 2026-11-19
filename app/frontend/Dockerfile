@@ -8,6 +8,7 @@ WORKDIR /app
 # when only the code or the pages change.
 COPY frontend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN opentelemetry-bootstrap -a install
 
 # Everything the frontend needs: the code, the page templates, the CSS and the script.
 COPY frontend/main.py .
@@ -15,4 +16,4 @@ COPY frontend/templates templates
 COPY frontend/static static
 
 # One Uvicorn worker per container.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["opentelemetry-instrument", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

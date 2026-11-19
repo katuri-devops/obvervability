@@ -11,5 +11,5 @@ RUN opentelemetry-bootstrap -a install
 COPY bank-api/main.py .
 
 # One Uvicorn worker, one copy.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["opentelemetry-instrument", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
  
