@@ -1,0 +1,16 @@
+name: claims-otel
+services:
+ otel-collector:
+   image: quay.io/signalfx/splunk-otel-collector:latest
+   restart: unless-stopped
+   command: ["--config=/etc/otelcol/config.yaml"]
+   env_file:
+     - .env
+   volumes:
+     - ./config.yaml:/etc/otelcol/config.yaml:ro
+   networks:
+     - claims-net
+ 
+networks:
+ claims-net:
+   external: true
