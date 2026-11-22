@@ -3,6 +3,8 @@
 This guide explains the application and its current OpenTelemetry setup. It is
 based on the repository configuration and source code, not a live-system test.
 See the [architecture diagrams](./architecture-diagram.md) alongside this guide.
+For a step-by-step explanation of the instrumentation and collector, start with
+the [OpenTelemetry beginner's guide](./opentelemetry-beginners-guide.md).
 
 ## 1. The application
 
